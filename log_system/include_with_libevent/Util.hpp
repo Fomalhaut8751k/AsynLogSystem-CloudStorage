@@ -46,24 +46,26 @@ namespace mylog
             }
 
             // 从文件路径中获取文件名字 
-            static std::string Path(const std::string& filename)
+            static std::pair<std::string, std::string> Path(const std::string& file_path)
             {
-                if(filename.empty()) return "";
+                if(file_path.empty()) return {"", ""};
                 
                 // 找到最后一个路径分隔符
-                size_t last_slash = filename.find_last_of("/\\");
+                size_t last_slash = file_path.find_last_of("/\\");
                 
                 if(last_slash == std::string::npos)
                 {
-                    return filename;  // 没有分隔符，返回整个字符串
+                    return {"", file_path};  // 没有分隔符，返回整个字符串
                 }
-                else if(last_slash == filename.length() - 1)
+                else if(last_slash == file_path.length() - 1)
                 {
-                    return "";  // 分隔符在末尾，返回空字符串
+                    return {"", ""};  // 分隔符在末尾，返回空字符串
                 }
                 else
                 {
-                    return filename.substr(last_slash + 1);  // 返回最后一个分隔符之后的内容
+                    std::string file_name = file_path.substr(last_slash + 1);  // 返回最后一个分隔符之后的内容
+                    std::string file_path_root = file_path.substr(0, last_slash+1);  // 路径
+                    return {file_path_root, file_name};
                 }
             }
 
@@ -85,7 +87,7 @@ namespace mylog
                     size_t size = filename.size();
                     
                     while(index < size)
-                    {   // index为查找的起始位置，pos为index开始第一个/或者\
+                    {   // index为查找的起始位置，pos为index开始第一个/或者
                         pos = filename.find_first_of("/\\", index);
                         if(pos == std::string::npos)
                         {
@@ -117,7 +119,7 @@ namespace mylog
             }
 
             // 获取文件大小 
-            int64_t FileSize(const std::string& filename)
+            static int64_t FileSize(const std::string& filename)
             {
                 if(!Exist(filename))
                 {
@@ -133,7 +135,7 @@ namespace mylog
             }
 
             // 获取文件内容
-            bool GetContent(std::string* content, std::string filename)  // content: 用于存储读取的文件内容
+            static bool GetContent(std::string* content, std::string filename)  // content: 用于存储读取的文件内容
             {
                 // 打开文件
                 std::ifstream ifs;
