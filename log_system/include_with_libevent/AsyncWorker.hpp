@@ -15,7 +15,7 @@
 #include <functional>
 
 #include "AsyncBuffer.hpp"
-#include "LogFlush.hpp"
+#include "Flush.hpp"
 
 #include "MyLog.hpp"
 
@@ -112,7 +112,7 @@ namespace mylog
                 cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
                 // 只要生产者一声令下，消费者就干活
                 cond_consumer_.wait(lock);
-
+                std::cerr << "Consumer process message" << std::endl;
                 for(std::string message_formatted: buffer_consumer_->read())
                 {
                     logger_->Info(message_formatted);

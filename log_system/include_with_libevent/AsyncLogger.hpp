@@ -1,6 +1,11 @@
 #ifndef ASYNCLOGGER_H
 #define ASYNCLOGGER_H
+/*
+    AsyncLogger 把组织好的日志放到（生产者的）缓存区上
+    "所有的操作将在这里被调用"
 
+    肯定有个函数，接受组织好的日志作为参数
+*/
 #include <stdio.h>
 #include <event.h>
 #include <stdlib.h>
@@ -10,15 +15,10 @@
 #include <string.h>
 #include <event2/listener.h>
 
-/*
-    AsyncLogger 把组织好的日志放到（生产者的）缓存区上
-    "所有的操作将在这里被调用"
 
-    肯定有个函数，接受组织好的日志作为参数
-*/
 #include "AsyncWorker.hpp"
 #include "Util.hpp"
-#include "LogFlush.hpp"
+#include "Flush.hpp"
 
 struct ListenerArgs
 {
@@ -67,7 +67,6 @@ void event_callback(struct bufferevent *bev, short what, void *args)
     }
 }
 
-
 // 给到listener的回调函数，当有客户端连接时就会触发该回调函数
 void listener_call_back(struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int socklen, void* args)
 {
@@ -114,10 +113,8 @@ protected:
     struct event_base* base_;
     struct evconnlistener* listener_;
 
-    std::string log_path_;     // log文件的路径
-    size_t size_;              // 文件最多存放的大小
-    std::string logger_name_;  // 日志器的名称
-    // mylog::Flush flush_;        // 日志输出器
+    std::string logger_name_;                     // 日志器的名称
+    std::shared_ptr<mylog::Flush> flush_;         // 日志输出器       
 
 public:
     virtual void setLogger() = 0;
@@ -125,8 +122,13 @@ public:
     virtual void setEvent() = 0;
 
     void setLoggerName(std::string logger_name){ logger_name_ = logger_name; }
-    void setLogPath(std::string log_path){ log_path_ = log_path; }
-    void setLogSize(size_t size){ size_ = size; }
+
+    template<typename FlushType>
+    void setLogFlush(const std::string& logpath, size_t size) 
+    { 
+        flush_ = std::make_shared<FlushType>(logpath, size); 
+        std::cerr << "typename: " << typeid(FlushType).name() << std::endl;
+    }
 
     std::string getLoggerName() const { return logger_name_; }
     mylog::Logger* getLogger() const { return logger_.get(); }
@@ -160,7 +162,7 @@ namespace mylog
 
         void setLogger()
         {
-            logger_ = std::make_shared<mylog::Logger>();
+            logger_ = std::make_shared<mylog::Logger>(flush_.get());
         }
 
         void setAsyncWorker()
@@ -229,11 +231,10 @@ namespace mylog
             async_logger_->setLoggerName(loggername);
         }
 
-        template<typename T>  // T: mylog::Flush flush
+        template<typename FlushType>  // T: mylog::Flush flush
         void BuildLoggerFlush(const std::string& logpath, size_t size)
         {
-            async_logger_->setLogPath(logpath);
-            async_logger_->setLogSize(size);
+            async_logger_->setLogFlush<FlushType>(logpath, size);
         }
 
         AbstractAsyncLoggerPtr Build()
