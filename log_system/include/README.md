@@ -50,9 +50,3 @@
 
     ![](img/建造者模式.drawio.png)
 
-- 由于`Glb->Build()`中包含了`event_base_dispatch(base_)`, 因此：
-    ```cpp
-    // 将日志器添加到日志管理者中，管理者是全局单例类 
-    mylog::LoggerManager::GetInstance().AddLogger(Glb->Build());
-    ```
-    这里的`.addLogger()`在调用前已经被阻塞了，执行不到。
