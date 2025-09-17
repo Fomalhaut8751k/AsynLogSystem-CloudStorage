@@ -50,3 +50,50 @@
 
     ![](img/建造者模式.drawio.png)
 
+
+## ThreadPool
+- Thread 线程类：
+
+    构造函数：接受来自线程池统一提供的线程函数
+    ```cpp
+    Thread(threadfunc func)
+    {
+        // 接受线程函数
+        // 设置线程标识号：static 并自动增长。
+    }
+    ```
+
+    启动函数：启动线程
+    ```cpp
+    void start()
+    {
+        // 创建并启动线程
+        // 设置为分离线程
+    }
+    ```
+
+- ThreadPool 线程池类：
+
+    重要的参数列表：
+        
+    1. 初始线程数量(初始化的时候)`initThreadSize_`，上限线程数量`threadSizeThreshHold_`，当前线程数量`curThreadSize_`，空闲线程数量`idleThreadSize_`(疑似不需要)，线程列表(unordered_map, key为线程号)`threads_`
+    2. 任务数量`taskSize_`，上限任务数量`taskQueMaxThreshHold_`，任务队列(queue)`taskQue_`
+    3. 互斥和同步操作：
+        
+        a. 保证任务队列taskQue_线程安全的互斥锁`taskQueMtx_`
+        
+        b. 通知线程来取任务的`notEmpty_`, 表示线程有提交的任务
+
+        c. 控制submitTask可以提交任务的`notFull_` 
+
+    
+    重要函数列表：
+    1. 启动线程，按照设置的线程数量初始化线程，放入`threads_`，然后遍历注意启动（调用线程的`start()`函数）
+
+    2. 线程函数，提供给Thread类的统一接口，内容为一个无限循环，wait等待任务队列不为空，苏醒并拿到锁后从队列中取出任务并执行
+
+    3. 提交任务函数，用户调用这个函数来向线程池提交任务，有1s的超时判断，如果这一秒内任务队列都是满的就判定提交失败，否则写入任务队列中
+
+
+
+

@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 
+#include "Message.hpp"
+
 #define UNIT_SPACE 1024
 
 namespace mylog
@@ -23,7 +25,7 @@ namespace mylog
         ~AsyncBuffer() = default;
 
         // 将用户的日志信息写入:
-        void write(const char* message, unsigned int length)
+        void write(const char* message_unformatted, unsigned int length)
         {
             /*
                 可能的情况：
@@ -40,7 +42,7 @@ namespace mylog
                 std::cerr << "空间不足" << std::endl;
                 return;  // 先丢掉，等待之后实现
             }
-            std::memcpy(buffer_.data() + buffer_pos_, message, length);
+            std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
         }
 
