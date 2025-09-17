@@ -12,8 +12,16 @@ namespace mylog
     private:
         LoggerManager() // 构造函数私有化
         {   // 添加默认的日志器
-            
+            std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
+            Glb->BuildLoggerName("default");
+            Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", -1);
+            LoggerMap["default"] = Glb->Build();
         }   
+        ~LoggerManager()
+        {
+            std::cerr << "~LoggerManager()" << std::endl;
+        }
+
         LoggerManager(const LoggerManager&) = delete;  // 禁止拷贝
         LoggerManager& operator=(const LoggerManager&) = delete;  // 禁止等号赋值  
 
@@ -42,12 +50,12 @@ namespace mylog
         }
 
         // 用户获取日志器
-        mylog::Logger* GetLogger(const std::string& name)
+        mylog::AbstractAsyncLoggerPtr GetLogger(const std::string& name)
         {
             if(LoggerMap.find(name) != LoggerMap.end())
-                return LoggerMap[name]->getLogger();    
+                return LoggerMap[name];    
             std::cerr << "can not find a logger name " << name << std::endl;
-            return LoggerMap["default"]->getLogger(); 
+            return LoggerMap["default"]; 
         }
 
         // 用户获取默认日志器
