@@ -41,7 +41,8 @@ namespace mylog
     public:
         FileFlush(std::string file_path, size_t size = 1)
         {
-            
+            file_path_ = file_path;
+            file_.open(file_path, std::ios::app);
         }  
         
         ~FileFlush() 
@@ -52,11 +53,13 @@ namespace mylog
 
         void flush(const std::string& formatted_log)
         {
+            std::cerr << "有日志被写入: " << file_path_ << "中" << std::endl;
             file_ << formatted_log << std::endl;
         }
 
     private:
         std::ofstream file_;
+        std::string file_path_;
     };
 
     // 滚动日志输出器
@@ -88,10 +91,13 @@ namespace mylog
             // file.open()创建文件的前提是前级的目录都存在
             mylog::Util::File::CreateDirectory(file_path_root);
 
-            
             std::string file_name_without_suffix = file_name.substr(0, pos);
-
             std::string new_file_path = file_path;
+            size_ = size;
+
+            // 设置初始的滚动日志文件路径
+            init_file_path_root_ = file_path_root;
+            init_file_name_without_suffix_ = file_name_without_suffix;
 
             int index = 1;
     
@@ -102,9 +108,15 @@ namespace mylog
                 {
                     file_.open(new_file_path, std::ios::app);
                     if(file_.is_open())
+                    {
+                        current_file_path_ = new_file_path;
+                        index_ = index + 1;  // 如果使用过程中写满了，就从这index_开始创建
                         return;
+                    } 
                     else
+                    {
                         exit(-1);
+                    }
                 }
                 else  // 空间不足     
                 {
@@ -126,64 +138,54 @@ namespace mylog
 
         void flush(const std::string& formatted_log)
         {
-            file_ << formatted_log << std::endl;
+            /*
+                写入前文件的大小 + formatted_log.length() + 1 = 写入后文件的大小
+            */
+            // 先判断文件是否大小足够：
+            // std::cerr << "当前文件: " << current_file_path_ << \
+            //             ": (" << mylog::Util::File::FileSize(current_file_path_) << "/" << size_ << ")" << std::endl;
+            size_t current_log_size = mylog::Util::File::FileSize(current_file_path_);
+            size_t log_size = formatted_log.length() + 1;
+
+            // 视为可以写入
+            if(current_log_size + log_size <= size_)  
+            {
+                std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
+                file_ << formatted_log << std::endl;
+            }
+            // 空间不足，需要创建新的.log
+            else
+            {
+                file_.close();  // 关闭原来的文件
+                std::string new_file_name_without_suffix = init_file_name_without_suffix_ + \
+                            "(" + std::to_string(index_++) + ")";
+                std::string new_file_path = init_file_path_root_ + new_file_name_without_suffix + ".log"; 
+
+
+                file_.open(new_file_path, std::ios::app);
+                if(!file_.is_open())
+                {
+                    printf("roll file falied");
+                    exit(-1);
+                }
+                // 当然新的空日志文件限定的大小比如200也写不下太大的字符串
+                // 但依然写入，不过下一次就不会写着这里
+                current_file_path_ = new_file_path;
+                std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
+                file_ << formatted_log << std::endl;
+            }
+
         }
 
     private:
         std::ofstream file_;
-    };
+        std::string init_file_path_root_;    // 记录初始的.log的路径
+        std::string init_file_name_without_suffix_;  // 记录初始的文件名不含.log
 
+        std::string current_file_path_;      // 当前滚动到的log文件
 
-    // 日志记录器
-    class Logger
-    {
-    public:
-        Logger(mylog::Flush* flush):
-            formatter_(std::make_unique<LoggerMessage>()),
-            flush_(flush),
-            level_(mylog::LogLevel::DEBUG){}
-
-        void log(mylog::LogLevel level, const std::string& message)
-        {
-            // 如果小于输出的最低级别就不输出
-            if(level >= level_)
-            {
-                // 先格式化
-                std::string formatted_log = formatter_->format(level, message);
-                // 输出
-                flush_->flush(formatted_log);
-            }
-        }
-
-        void Debug(const std::string& message)  // 调试信息
-        {
-            log(LogLevel::DEBUG, message);
-        }
-
-        void Info(const std::string& message)  // 普通信息
-        {
-            log(LogLevel::INFO, message);
-        }
-
-        void Warn(const std::string& message)  // 警告信息
-        {
-            log(LogLevel::WARN, message);
-        }
-
-        void Error(const std::string& message)  // 错误信息
-        {
-            log(LogLevel::ERROR, message);
-        }
-
-        void Fatal(const std::string& message)  // 致命信息
-        {
-            log(LogLevel::FATAL, message);
-        }
-
-    private:
-        LogLevel level_;        // 输入日志的最低级别
-        mylog::Flush* flush_;   // 日志输出器
-        std::unique_ptr<LoggerMessage> formatter_;
+        int index_;
+        size_t size_;
     };
 
 }
