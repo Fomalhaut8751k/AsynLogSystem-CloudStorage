@@ -20,7 +20,7 @@ int main()
     // 使用日志器建造者一个名字叫asynclogger的日志器
     std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
     Glb->BuildLoggerName("asynclogger");
-    Glb->BuildLoggerFlush<mylog::RollFileFlush>("./log/app.log", 500);
+    Glb->BuildLoggerFlush<mylog::ConsoleFlush>("./log/app.log", 700);
 
     // 将日志器添加到日志管理者中，管理者是全局单例类 
     mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));   // 小于Warn的Debug和Info不会被写到日志当中
