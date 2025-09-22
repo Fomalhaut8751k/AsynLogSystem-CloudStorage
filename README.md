@@ -9,6 +9,8 @@
 
     include(with libevent)提供了基于libevent的部分功能测试，可以在终端`nc 127.0.0.1 8000`向服务器发送消息作为日志信息发送到控制台和日志中。
 
+<br>
+
 2. 2025.9.17
 
     - 发现没有libevent测试的异步日志管理系统并没有将日志信息写入缓冲区，而是直接发送了
@@ -36,13 +38,6 @@
 
     - 完善了日志信息的筛选部分，即等于最低等级的日志消息不会被`flush`
 
-    <br>
-
-    - 消息处理完毕后主线程异常阻塞，即便是`main`函数执行`return 0`后：
-    ![](img/disable1.png)
-    两个异步日志器，对应两对生产者-消费者线程即一共四个，即使设计为分离线程，主线程依然会阻塞住。
-
-        在调用`~AsyncWorker()`的时候，通过标记让生产者和消费者线程终止循环。
     
 
 
@@ -84,6 +79,47 @@
         ```
         ![](img/buffer_swap_3.png)
 
+<br>
+
+3. 2025.9.22
+
+    实现了`backlog`服务器和客户端的部分，以及`ThreadPool`与异步日志系统的连接：线程函数`threadfunc`调用时，会先创建一个`Client`指针，`Client`会执行一系列连接服务器相关的操作等。当异步日志系统发现日志时[Error]和[Fatal]时，就会通过线程池的`submitLog()`进行提交。
+    线程函数中会检测是否日志队列中有日志，如果有，抢到锁后就将其发送到服务器。
+
+    - 一个连接服务器后事件循环无法正常启动的问题
+
+        通过gdb调试发现，有时候有些进程无法正常启动事件循环，刚启动后就发现`event_base_dispatch(base);`下面的断点被触发了。
+        ![](img/ignore.png)
+
+        通过gdb打印`event_base_dispatch(base);`的返回值发现，异常退出事件循环的，它们返回值为1，而正常退出的几个返回值都是0，通过查阅`libevent`的源码发现，返回值为1表示**没有事件被注册**。
+        ```cpp
+        /* If we have no events, we just exit */
+		if (0==(flags&EVLOOP_NO_EXIT_ON_EMPTY) &&
+		    !event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)) {
+			event_debug(("%s: no events registered.", __func__));
+			retval = 1;
+			goto done;
+		}
+        ```
+
+        进而发现事件循环异常的线程都是连接失败的，通过在语句`Connecting_ = true;`上打断点发现这些线程都没有经过
+        ```cpp
+        // 尝试连接服务器
+        if (bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_)) < 0)
+        {
+            return false;
+        }
+
+        // 判断服务器是否连接成功 
+        if(!returnConnectLabel->get_future().get())
+        {
+            return false;
+        } 
+        Connecting_ = true;
+        return true;
+        ```
+        进一步发现，异常的线程的事件回调函数`event_callback()`并不会触发
+
+    异步日志系统向服务器发送消息的功能基本完善，存在瑕疵但是对整体的功能没有影响。
 
 
-        

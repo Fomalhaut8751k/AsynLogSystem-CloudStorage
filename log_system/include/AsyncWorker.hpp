@@ -67,7 +67,7 @@ namespace mylog
         ~AsyncWorker()
         {
             std::unique_lock<std::mutex> lock(Mutex_);
-            std::cerr << "~AsyncWorker()" << std::endl;
+            // std::cerr << "~AsyncWorker()" << std::endl;
             // 终止生产者和消费者线程
             ExitLabel_ = true;
             // 通知生产者和消费者
@@ -82,11 +82,11 @@ namespace mylog
         void start()
         {   
             std::thread productorThread(std::bind(&AsyncWorker::productorTask, this));
-            std::cerr << "productor is ready!" << std::endl;
+            // std::cerr << "productor is ready!" << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
             std::thread consumerThread(std::bind(&AsyncWorker::consumerTask, this));
-            std::cerr << "consumer is ready!" << std::endl;
+            // std::cerr << "consumer is ready!" << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
             productorThread.detach();
@@ -105,7 +105,7 @@ namespace mylog
                 );
                 if(ExitLabel_)
                 {
-                    std::cerr << "producer thread exit" << std::endl;
+                    // std::cerr << "producer thread exit" << std::endl;
                     ExitProductorLabel_ = true;
                     cond_exit_.notify_all();
                     return;
@@ -113,7 +113,7 @@ namespace mylog
 
                 if(!buffer_productor_->read().empty())
                 {
-                    std::cerr << "Producer has received information!" << std::endl;
+                    // std::cerr << "Producer has received information!" << std::endl;
                     // 交换生产者和消费者的变量
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
@@ -145,7 +145,7 @@ namespace mylog
                 cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
                 if(ExitLabel_)
                 {
-                    std::cerr << "consumer thread exit" << std::endl;
+                    // std::cerr << "consumer thread exit" << std::endl;
                     ExitConsumerLabel_ = true;
                     cond_exit_.notify_all();
                     return;

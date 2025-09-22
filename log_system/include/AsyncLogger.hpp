@@ -9,6 +9,8 @@
 #include "AsyncWorker.hpp"
 #include "Util.hpp"
 #include "Flush.hpp"
+#include "backlog/ClientBackupLog.hpp"
+#include "ThreadPool.hpp"
 
 // 抽象的产品(异步日志器)类
 class AbstractAsyncLogger
@@ -20,26 +22,41 @@ protected:
     mylog::LogLevel level_;                       // 输入日志的最低级别
 
     std::string logger_name_;                     // 日志器的名称
-    std::shared_ptr<mylog::Flush> flush_;         // 日志输出器       
+    std::shared_ptr<mylog::Flush> flush_;         // 日志输出器     
+
+    mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
 
 public:
+    AbstractAsyncLogger():threadpool_(nullptr){}
+    virtual ~AbstractAsyncLogger() = default;
+
     virtual void setLevel(mylog::LogLevel) = 0;
     virtual void setAsyncWorker() = 0;
 
+    // 设置异步日志器的名称，可以通过名称从管理者那调用对应的日志器使用
     void setLoggerName(std::string logger_name){ logger_name_ = logger_name; }
 
+    // 设置不同类型(ConsoleFlush, FileFlush, RollFileFlush)的日志提交方式
     template<typename FlushType>
     void setLogFlush(const std::string& logpath, size_t size) 
     { 
         flush_ = std::make_shared<FlushType>(logpath, size); 
-        std::cerr << "typename: " << typeid(FlushType).name() << std::endl;
+        // std::cerr << "typename: " << typeid(FlushType).name() << std::endl;
     }
 
+    // 接受线程池的指针，用于调用submitLog推送日志到服务器
+    void setThreadPool(mylog::ThreadPool* thread_pool)
+    {
+        threadpool_ = thread_pool;
+    }
+
+    // 提交日志
     void log(std::string formatted_message)
     {
         flush_->flush(formatted_message);
     }
 
+    // 将消息处理为Debug类型的日志并发送
     void Debug(const std::string& unformatted_message)  // 调试信息
     {
         // 先格式化日志信息
@@ -57,6 +74,7 @@ public:
         
     }
 
+    // 将消息处理为Info类型的日志并发送
     void Info(const std::string& unformatted_message)  // 普通信息
     {
         // 先格式化日志信息
@@ -73,6 +91,7 @@ public:
         worker_->readFromUser(formatted_message, formatted_message_length);
     }
 
+    // 将消息处理为Warn类型的日志并发送
     void Warn(const std::string& unformatted_message)  // 警告信息
     {
         // 先格式化日志信息
@@ -89,6 +108,7 @@ public:
         worker_->readFromUser(formatted_message, formatted_message_length);
     }
 
+    // 将消息处理为Error类型的日志并发送
     void Error(const std::string& unformatted_message)  // 错误信息
     {
         // 先格式化日志信息
@@ -101,10 +121,18 @@ public:
             return;
         }
 
+        // 把error级别的日志发送到服务器中,确保先连接上了
+        if(threadpool_)
+        {
+            // std::cerr << "=> 日志消息 " << formatted_message << "将被发送至服务器" << std::endl;
+            threadpool_->submitLog(formatted_message);
+        }  
+
         // 把信息写到worker_的buffer当中
         worker_->readFromUser(formatted_message, formatted_message_length);
     }
 
+    // 将消息处理为Fatal类型的日志并发送
     void Fatal(const std::string& unformatted_message)  // 致命信息
     {
         // 先格式化日志信息
@@ -117,10 +145,16 @@ public:
             return;
         }
 
+        // 把fatal级别的日志发送到服务器中,确保先连接上了
+        if(threadpool_)
+        {
+            // std::cerr << "=> 日志消息 " << formatted_message << "将被发送至服务器" << std::endl;
+            threadpool_->submitLog(formatted_message);
+        }  
+
         // 把信息写到worker_的buffer当中
         worker_->readFromUser(formatted_message, formatted_message_length);
     }
-
 
     std::string getLoggerName() const { return logger_name_; }
 };
@@ -136,6 +170,7 @@ public:
     virtual void BuildLoggerName(const std::string& loggername) = 0;
     // virtual void BuildLoggerFlush()
     virtual std::shared_ptr<AbstractAsyncLogger> Build(mylog::LogLevel) = 0;
+    virtual void BuildLoggerThreadPool(mylog::ThreadPool*) = 0;
 };
 
 
@@ -150,6 +185,12 @@ namespace mylog
 
     public:
         using ptr = std::shared_ptr<AsyncLogger>;
+
+        AsyncLogger():AbstractAsyncLogger(){}
+        ~AsyncLogger()
+        {
+            
+        }
 
         void setLevel(mylog::LogLevel level)
         {
@@ -184,6 +225,11 @@ namespace mylog
         void BuildLoggerFlush(const std::string& logpath, size_t size)
         {
             async_logger_->setLogFlush<FlushType>(logpath, size);
+        }
+
+        void BuildLoggerThreadPool(mylog::ThreadPool* thread_pool_)
+        {
+            async_logger_->setThreadPool(thread_pool_);
         }
 
         AbstractAsyncLoggerPtr Build(mylog::LogLevel level = mylog::LogLevel::INFO)
