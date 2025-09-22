@@ -2,6 +2,7 @@
 #define MANAGER_H
 
 #include "AsyncLogger.hpp" 
+#include "ThreadPool.hpp"
 #include <string>
 #include <unordered_map>
 
@@ -10,16 +11,10 @@ namespace mylog
     class LoggerManager
     {  // 全局单例
     private:
-        LoggerManager() // 构造函数私有化
-        {   // 添加默认的日志器
-            std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
-            Glb->BuildLoggerName("default");
-            Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", -1);
-            LoggerMap["default"] = Glb->Build();
-        }   
+        LoggerManager(){}; // 构造函数私有化
         ~LoggerManager()
         {
-            std::cerr << "~LoggerManager()" << std::endl;
+            // std::cerr << "~LoggerManager()" << std::endl;
         }
 
         LoggerManager(const LoggerManager&) = delete;  // 禁止拷贝
@@ -27,7 +22,6 @@ namespace mylog
 
         // 存放日志器
         std::unordered_map<std::string, mylog::AbstractAsyncLoggerPtr> LoggerMap;
-
         // 控制线程互斥
         std::mutex LoggerManagerMutex_;
 
@@ -37,6 +31,16 @@ namespace mylog
         {
             static LoggerManager logger_manager_;
             return logger_manager_;
+        }
+
+        // 添加默认的日志器
+        void AddDefaultLogger(mylog::ThreadPool* thread_pool)
+        {
+            std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
+            Glb->BuildLoggerName("default");
+            Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", -1);
+            Glb->BuildLoggerThreadPool(thread_pool);
+            LoggerMap["default"] = Glb->Build();
         }
 
         // 添加日志器
@@ -49,6 +53,17 @@ namespace mylog
                 LoggerMap[logger_name] = async_logger;
         }
 
+        // 用户获取默认日志器
+        mylog::AbstractAsyncLoggerPtr DefaultLogger()
+        {
+            if(LoggerMap.find("default") == LoggerMap.end())
+            {
+                std::cerr << "default logger is not exist" << std::endl;
+                return nullptr;
+            }
+            return LoggerMap["default"];
+        }
+
         // 用户获取日志器
         mylog::AbstractAsyncLoggerPtr GetLogger(const std::string& name)
         {
@@ -56,12 +71,6 @@ namespace mylog
                 return LoggerMap[name];    
             std::cerr << "can not find a logger name " << name << std::endl;
             return LoggerMap["default"]; 
-        }
-
-        // 用户获取默认日志器
-        mylog::AbstractAsyncLoggerPtr DefaultLogger()
-        {
-            return LoggerMap["default"];
         }
 
         // 查看当前所有的日志器（测试功能）
