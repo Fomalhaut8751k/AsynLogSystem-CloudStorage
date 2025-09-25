@@ -122,7 +122,7 @@ public:
         }
 
         // 把error级别的日志发送到服务器中,确保先连接上了
-        if(threadpool_)
+        if(threadpool_->Connected())
         {
             // std::cerr << "=> 日志消息 " << formatted_message << "将被发送至服务器" << std::endl;
             threadpool_->submitLog(formatted_message);
@@ -146,7 +146,7 @@ public:
         }
 
         // 把fatal级别的日志发送到服务器中,确保先连接上了
-        if(threadpool_)
+        if(threadpool_->Connected())
         {
             // std::cerr << "=> 日志消息 " << formatted_message << "将被发送至服务器" << std::endl;
             threadpool_->submitLog(formatted_message);
