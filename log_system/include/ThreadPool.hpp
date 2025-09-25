@@ -10,7 +10,7 @@
 #include <queue>
 #include "backlog/ClientBackupLog.hpp"
 
-#define INIT_THREADSIZE 4
+#define INIT_THREADSIZE 8
 #define THREAD_SIZE_THRESHHOLD 8
 #define LOGQUE_MAX_THRESHHOLD 4
 
@@ -54,6 +54,7 @@ namespace mylog
     {
     private:
         using tp_uint = unsigned int;
+        using tp_atomic_uint = std::atomic_uint16_t;
         using tp_log = std::string;
         // using Task = std::function<void()>;
 
@@ -61,11 +62,11 @@ namespace mylog
                     unsigned int port = 8000)
         {
             setup(addr, port);
-            ThreadPoolRunning_ = true;  // 表示线程池正在运行中
         }
 
         ~ThreadPool()   
         {
+            std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
             // std::cerr << "~ThreadPool()" << std::endl;
             // 线程池析构的时候要把所有事件循环关闭
             std::unique_lock<std::mutex> lock(logQueMtx_);
@@ -76,13 +77,14 @@ namespace mylog
             Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
 
             // std::cout << "~ThreadPool() finish" << std::endl;
+            // std::this_thread::sleep_for(std::chrono::seconds(5));
         }
 
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool& operator=(const ThreadPool&) = delete;
 
         tp_uint initThreadSize_;    // 初始线程大小
-        tp_uint curThreadSize_;     // 当前线程大小（成功连接上服务器的）
+        tp_atomic_uint curThreadSize_;     // 当前线程大小（成功连接上服务器的）
         tp_uint threadSizeThreshHold_;   // 线程上限大小
         std::unordered_map<int, std::unique_ptr<Thread>> threads_;   // 线程列表
 
@@ -110,20 +112,17 @@ namespace mylog
             // 启动客户端并连接服务器, 其中包含了event_base_dispatch(base);
             if(client_->start())
             {
-                // std::cout << "=> thread id: " << std::this_thread::get_id() \
-                //         << " connected server successful!" << std::endl;
                 curThreadSize_++;
             }
             else
             {
-                // std::cout << "=> thread id: " << std::this_thread::get_id() \
-                //         << " connected server failed!" << std::endl;
                 client_->stop();
                 return;
             }
 
             // 日志信息
             tp_log log = "";
+            curThreadSize_ = 8;
 
             while(ThreadPoolRunning_ || logSize_)
             {
@@ -140,7 +139,6 @@ namespace mylog
                     }
                     else  // 唤醒条件要么有日志，要么线程池关闭了，但是先判断有日志
                     { 
-                        curThreadSize_--;
                         break;
                     }
                     
@@ -158,7 +156,8 @@ namespace mylog
                     log = "";
                 }
             }
-
+            
+            curThreadSize_--;
             client_->stop();  // 清理base, bv，关闭事件循环
             Exit_.notify_all();  // 通知析构函数那里，我这个线程已经清理完成了
             
@@ -187,6 +186,8 @@ namespace mylog
 
             logSize_ = 0;
             logQueMaxThreshHold_ = LOGQUE_MAX_THRESHHOLD;
+
+            ThreadPoolRunning_ = true;  // 表示线程池正在运行中
         }
 
         void startup()
@@ -223,6 +224,8 @@ namespace mylog
             logSize_++;
             notEmpty_.notify_all();        
         }
+
+        bool Connected() const { return curThreadSize_ > 0;}
 
     };
 }

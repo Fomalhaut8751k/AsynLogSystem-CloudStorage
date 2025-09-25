@@ -40,7 +40,11 @@ private:
     struct event_base* base_;
     struct sockaddr_in server_addr_;
     struct bufferevent* bev_;
-    struct event* ev_;
+    // struct event* ev_;
+    // struct timeval tv = {5, 0}; // 5秒
+
+    std::string addr_;
+    unsigned int port_;
 
     // 模拟日志信息缓冲区
     std::string log_message_;
@@ -61,28 +65,8 @@ public:
         log_message_ = "";
         Connecting_ = false;
         threadid_ = threadid;
-
-        // 为 Libevent 启用 POSIX 线程（pthreads）支持
-        evthread_use_pthreads();
-        base_ = event_base_new();
-        if(NULL == base_)
-        {
-            std::cerr << "event_base_new error" << std::endl;
-            exit(-1);
-        }
-        
-        memset(&server_addr_, 0, sizeof(server_addr_));
-        server_addr_.sin_family = AF_INET;
-        server_addr_.sin_addr.s_addr = inet_addr(addr.c_str());
-        server_addr_.sin_port = htons(port);
-
-        bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
-        if (NULL == bev_) {
-            std::cerr << "bufferevent_socket_new error!" << std::endl;
-            event_base_free(base_);
-            exit(-1);
-        }
-
+        port_ = port;
+        addr_ = addr;
     }
 
     ~Client()
@@ -97,17 +81,48 @@ public:
         // 判断事件循环是否结束
         returnEventLoopExit = std::make_shared<std::packaged_task<bool()>>([]() -> bool {  return true; });
        
+        // 为 Libevent 启用 POSIX 线程（pthreads）支持
+        evthread_use_pthreads();
+        base_ = event_base_new();
+        if(NULL == base_)
+        {
+            std::cerr << "event_base_new error" << std::endl;
+            exit(-1);
+        }
+        
+        memset(&server_addr_, 0, sizeof(server_addr_));
+        server_addr_.sin_family = AF_INET;
+        server_addr_.sin_addr.s_addr = inet_addr(addr_.c_str());
+        server_addr_.sin_port = htons(port_);
+
+
+        bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
+        if (NULL == bev_) {
+            std::cerr << "bufferevent_socket_new error!" << std::endl;
+            event_base_free(base_);
+            exit(-1);
+        }
+
+        // // 创建一个持久性的超时事件
+        // ev_ = event_new(base_, -1, EV_TIMEOUT | EV_PERSIST, [](int, short, void *)->void{ }, NULL);
+
+        // // 加入事件循环
+        // event_add(ev_, &tv);
+
+        
         bufferevent_setcb(bev_, read_callback, NULL, event_callback, (void*)returnConnectLabel.get());
-        bufferevent_enable(bev_, EV_READ | EV_WRITE);
+        int ret = bufferevent_enable(bev_, EV_READ | EV_WRITE);
+        if(ret < 0)
+        {
+            return false;
+        }
 
         // 运行事件循环
         std::thread t1(event_loop_start, base_, returnEventLoopExit.get());
         t1.detach();
 
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-
         // 尝试连接服务器
-        int ret = bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
+        ret = bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
         if(ret < 0)
         {
             return false;
@@ -138,7 +153,7 @@ public:
         }
 
         // 等待事件循环结束
-        returnEventLoopExit->get_future().get();
+        returnEventLoopExit->get_future();
 
         bufferevent_free(bev_);
         event_base_free(base_);
@@ -184,9 +199,17 @@ void event_callback(struct bufferevent* bev, short events, void* ctx)
 // 启动事件循环
 void event_loop_start(struct event_base* base, std::packaged_task<bool()>* returnEventLoopExit)
 {
-    // std::cerr << "event loop start" << std::endl;
+    // std::cerr << "event loop start" << std::endl
+
+    int active = event_base_get_num_events(base, EVENT_BASE_COUNT_ACTIVE);
+    int added = event_base_get_num_events(base, EVENT_BASE_COUNT_ADDED);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     int ret = event_base_dispatch(base);
+    
     // std::cerr << "event loop exit" << std::endl;
+
     (*returnEventLoopExit)();
 }
 

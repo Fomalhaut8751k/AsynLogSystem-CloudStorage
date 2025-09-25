@@ -91,7 +91,7 @@
         通过gdb调试发现，有时候有些进程无法正常启动事件循环，刚启动后就发现`event_base_dispatch(base);`下面的断点被触发了。
         ![](img/ignore.png)
 
-        通过gdb打印`event_base_dispatch(base);`的返回值发现，异常退出事件循环的，它们返回值为1，而正常退出的几个返回值都是0，通过查阅`libevent`的源码发现，返回值为1表示**没有事件被注册**。
+        通过gdb打印`event_base_dispatch(base);`的返回值发现，异常退出事件循环的，它们返回值为1，而正常退出的几个返回值都是0，通过查阅`libevent`的源码，找到退出循环的语句，从判断语句的其中两个条件来看，`!event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)`应该分别表示：是否有事件，以及激活状态的事件的数量。
         ```cpp
         /* If we have no events, we just exit */
 		if (0==(flags&EVLOOP_NO_EXIT_ON_EMPTY) &&
@@ -101,25 +101,90 @@
 			goto done;
 		}
         ```
-
-        进而发现事件循环异常的线程都是连接失败的，通过在语句`Connecting_ = true;`上打断点发现这些线程都没有经过
         ```cpp
-        // 尝试连接服务器
-        if (bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_)) < 0)
+        static int event_haveevents(struct event_base *base)
         {
-            return false;
+            return (base->virtual_event_count > 0 || base->event_count > 0);
         }
-
-        // 判断服务器是否连接成功 
-        if(!returnConnectLabel->get_future().get())
-        {
-            return false;
-        } 
-        Connecting_ = true;
-        return true;
         ```
-        进一步发现，异常的线程的事件回调函数`event_callback()`并不会触发
+        ```cpp
+        #define N_ACTIVE_CALLBACKS(base) ((base)->event_count_active)        
+        ```
+       
+        通过gdb进入`event_base_dispatch(base)`函数内部，事件循环正常启动的情况下，应该是如下情况：蓝色划线的分别代表事件循环直接退出的三个需要成立条件：其中`flags`默认为0，`EVLOOP_NO_EXIT_ON_EMPTY`为0x04，&后的结果为0，因此第一个条件满足；第二个条件获取注册的事件情况，返回1表示有注册的事件，正常情况下返回1，故第二个条件为0，到此已经可以判断条件不会成立；第三个条件式激活状态的事件情况，结果是0，故第三个条件为满足。
+        ![](img/event_loop.png)
+        
+        我们用gdb将断点打在事件循环直接退出的条件满足后执行的语句上，结果发现，此时的事件循环中没有任何事件！因此事件循环退出的三个条件都满足了，于是`event_base_dispatch(base)`直接就出来了。
+        ![](img/event_loop_2.png)
+        
+        进一步调试，我们打印刚进入`event_base_dispatch(base)`时事件循环有无事件，发现是有的`event_haveevents(base) = 1`(`event_callback`和`read_callback`两个事件，只打印`base->event_count`是2)，但等到事件循环退出的条件判断时，却显示没有任何事件。
+        ![](img/event_loop_3.png)
+
+        另外我们发现，在进入事件循环即执行`event_base_dispatch(base)`之前使线程休眠0.1s，便可解决上述问题。
+        ```cpp
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        ```
 
     异步日志系统向服务器发送消息的功能基本完善，存在瑕疵但是对整体的功能没有影响。
 
 
+4. 2025.9.23
+    - 异步日志器判断线程池是否创建成功来决定是否向服务器提交日志，但是线程池创建成功不代表器它的线程连接服务器成功，因此
+    线程池向外包装一个函数，用于判断成功连接的数量，如果一个都没有，那就不提交。
+
+    - 实现了把服务器接受到的日志消息写入到日志文件中，之前仅仅是输出在控制台中
+
+    - 新的问题（可能和22号的问题有联系），当启动的线程较多比如8个时，发生以下问题的概率就更高：
+        ![](img/process.png)
+        图中我们可以看到，参数`base`和`returnEventLoopExit()`已不可访问。说明`Client`对象此时已经析构了，
+        它的这两个成员变量无法再访问。
+
+        在`Client`的启动函数`start()`中，我们将事件循环放到了另一个线程并将其设置为分离线程。在`Client::stop()`中关闭事件循环，等待事件循环关闭后再接着把`bev`和`base`清理掉。
+        ![](img/stream.png)
+        `Client()`发生在线程池的线程函数退出后，那么就可能发生以下的情况：
+
+        `client_->stop()`执行，
+        ```cpp
+        void threadFunc(tp_uint threadid)
+        {
+            std::unique_ptr<Client> client_ =
+                std::make_unique<Client>(serverAddr_, serverPort_, threadid);
+            // 启动客户端并连接服务器, 其中包含了event_base_dispatch(base);
+            if(client_->start())
+            .
+            .
+            .
+
+            client_->stop();  // 清理base, bv，关闭事件循环
+            Exit_.notify_all();  // 通知析构函数那里，我这个线程已经清理完成了
+        }
+        ```
+
+        当我们在`~ThreadPool()`最后休眠5s，该问题便解决，因此我们可以认为：线程池析构后还有一些`Client`没有析构完成，导致出错。另外，当`Client`连接服务器成功后，`curThreadSize_`就会加一，但是有时候，这个值可能
+        会小于`INIT_THREADSIZE`，或许可以说明某些`Client`连接失败，并且连接失败`Client`，服务器控制台显示的客户端下线发生在5s休眠之后，而正常连接都发生在5s休眠之前，并且它们不会执行到`client_->stop();`和`Exit_.notify_all();`，而5s之后是线程池析构了，因此还可以认为，有些`Client`在`while`循环中无法退出。
+
+5. 2025.9.25
+
+    - 在启动事件循环之前让线程休眠100ms，就解决了上面两个大问题...
+        ```cpp
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        int ret = event_base_dispatch(base);
+        ```
+
+
+
+
+         从判断语句的其中两个条件来看，`!event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)`应该分别表示：有事件和有激活的事件，因此通过输出发现，注册的事件是2没有问题(`read_callback`和`event_callback`), 但处于活跃状态的事件却是0, 因此事件循环会结束，并返回1。
+        ```cpp
+        int active = event_base_get_num_events(base, EVENT_BASE_COUNT_ACTIVE);   # 0
+        int added = event_base_get_num_events(base, EVENT_BASE_COUNT_ADDED);     # 2
+        ```
+        通过测试发现，即使不连接服务器，`event_base_dispatch(base)`都是能正常阻塞的：
+        ```cpp
+        struct bufferevent* bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
+        bufferevent_setcb(bev_, read_callback, NULL, event_callback, NULL);
+        bufferevent_enable(bev_, EV_READ | EV_WRITE);
+
+        std::thread t1(event_loop_start, base_); 
+        t1.join();
+        ```
