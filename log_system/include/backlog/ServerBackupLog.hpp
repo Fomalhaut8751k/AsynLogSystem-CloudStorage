@@ -11,7 +11,96 @@
 #include <string.h>
 #include <event2/listener.h>
 #include <iostream>
+#include <fstream>
 
+
+
+// 将接受到的数据写到生产的buffer中
+void read_log_callback(struct bufferevent *, void*);
+
+// 事件
+void event_callback(struct bufferevent *, short, void *);
+
+// 给到listener的回调函数，当有客户端连接时就会触发该回调函数
+void listener_call_back(struct evconnlistener *, evutil_socket_t, struct sockaddr *, int, void*);
+
+
+class Server
+{
+private:
+    struct event_base* base_;
+    struct sockaddr_in server_addr_;
+    struct evconnlistener* listener_;
+
+    std::string logfilepath_;  // 存放日志的地址
+    static std::ofstream file_;        // 日志文件
+
+public:
+    Server(const std::string addr = "127.0.0.1", unsigned int port = 8000)
+    {
+        logfilepath_ = "./logfile.log";
+        file_.open(logfilepath_, std::ios::app);
+        if(!file_.is_open())
+        {
+            std::cerr << "open log file failed!" << std::endl;
+            exit(-1);
+        }
+
+        memset(&server_addr_, 0, sizeof(server_addr_));
+        server_addr_.sin_family = AF_INET;
+        server_addr_.sin_addr.s_addr = inet_addr("127.0.0.1");
+        server_addr_.sin_port = htons(8000);
+
+        base_ = event_base_new();
+        if(NULL == base_)
+        {
+            std::cerr << "event_base_new error" << std::endl;
+            exit(-1);
+        }
+
+        // 创建socket, 绑定，监听，接受连接
+        struct evconnlistener* listener_ = evconnlistener_new_bind(
+            base_,                                      // 事件集合
+            listener_call_back,                         // 当有连接被调用时的函数
+            (void*)(base_),                             // 回调函数参数
+            LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,  // 释放监听对象关闭socket | 端口重复使用
+            10,                                         // 监听队列长度
+            (struct sockaddr*)&server_addr_,             // 绑定的信息
+            sizeof(server_addr_)                         // 绑定信息的长度
+        );
+        if(NULL == listener_)
+        {
+            printf("evconnlistener_new_bind error\n");
+            exit(1);
+        }
+    }
+
+    ~Server()
+    {
+        // 释放文件资源
+        if(file_.is_open())
+            file_.close();
+        
+        // 释放两个对象
+        evconnlistener_free(listener_);
+        event_base_free(base_);
+    }
+    
+    // 启动事件循环
+    void start()
+    {
+        // 监听集合中的事件
+        event_base_dispatch(base_);    // 线程会阻塞在这里
+    }
+
+    static void save(char buffer[])
+    {
+        file_ << buffer << std::endl;
+    }
+
+};
+
+std::ofstream Server::file_;
 
 // 将接受到的数据写到生产的buffer中
 void read_log_callback(struct bufferevent *bev, void* args)
@@ -27,7 +116,7 @@ void read_log_callback(struct bufferevent *bev, void* args)
     }
     // ####### 处理数据 #######
     std::cerr << buffer << std::endl;
-
+    Server::save(buffer);
     // #######################
 }
 
@@ -79,60 +168,5 @@ void listener_call_back(struct evconnlistener *listener, evutil_socket_t fd, str
     // 使能事件类型
     bufferevent_enable(bev, EV_READ);  // 使能读
 }
-
-
-class Server
-{
-private:
-    struct event_base* base_;
-    struct sockaddr_in server_addr_;
-    struct evconnlistener* listener_;
-
-public:
-    Server(const std::string addr = "127.0.0.1", unsigned int port = 8000)
-    {
-        memset(&server_addr_, 0, sizeof(server_addr_));
-        server_addr_.sin_family = AF_INET;
-        server_addr_.sin_addr.s_addr = inet_addr("127.0.0.1");
-        server_addr_.sin_port = htons(8000);
-
-        base_ = event_base_new();
-        if(NULL == base_)
-        {
-            std::cerr << "event_base_new error" << std::endl;
-            exit(-1);
-        }
-
-        // 创建socket, 绑定，监听，接受连接
-        struct evconnlistener* listener_ = evconnlistener_new_bind(
-            base_,                                      // 事件集合
-            listener_call_back,                         // 当有连接被调用时的函数
-            (void*)(base_),                             // 回调函数参数
-            LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,  // 释放监听对象关闭socket | 端口重复使用
-            10,                                         // 监听队列长度
-            (struct sockaddr*)&server_addr_,             // 绑定的信息
-            sizeof(server_addr_)                         // 绑定信息的长度
-        );
-        if(NULL == listener_)
-        {
-            printf("evconnlistener_new_bind error\n");
-            exit(1);
-        }
-    }
-
-    ~Server()
-    {
-        // 释放两个对象
-        evconnlistener_free(listener_);
-        event_base_free(base_);
-    }
-    
-    void start()
-    {
-        // 监听集合中的事件
-        event_base_dispatch(base_);    // 线程会阻塞在这里
-    }
-
-};
 
 #endif
