@@ -66,7 +66,7 @@ namespace mylog
 
         ~ThreadPool()   
         {
-            std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
+            // std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
             // std::cerr << "~ThreadPool()" << std::endl;
             // 线程池析构的时候要把所有事件循环关闭
             std::unique_lock<std::mutex> lock(logQueMtx_);

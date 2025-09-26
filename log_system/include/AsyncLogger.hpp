@@ -156,6 +156,19 @@ public:
         worker_->readFromUser(formatted_message, formatted_message_length);
     }
 
+    void Log(std::pair<std::string, mylog::LogLevel> log_message)
+    {
+        std::string unformatted_message = log_message.first;
+        mylog::LogLevel log_level = log_message.second;
+        
+        if(log_level == mylog::LogLevel::DEBUG) { Debug(unformatted_message); }
+        else if(log_level == mylog::LogLevel::INFO) { Info(unformatted_message); }
+        else if(log_level == mylog::LogLevel::WARN) { Warn(unformatted_message); }
+        else if(log_level == mylog::LogLevel::ERROR) { Error(unformatted_message); }
+        else if(log_level == mylog::LogLevel::FATAL) { Fatal(unformatted_message); }
+        else {}
+    }
+
     std::string getLoggerName() const { return logger_name_; }
 };
 
