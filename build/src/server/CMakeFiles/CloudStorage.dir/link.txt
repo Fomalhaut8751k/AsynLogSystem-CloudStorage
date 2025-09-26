@@ -1,0 +1,1 @@
+/usr/bin/c++ -g -rdynamic CMakeFiles/CloudStorage.dir/Test.cpp.o CMakeFiles/CloudStorage.dir/base64.cpp.o -o ../../../bin/CloudStorage  -levent -levent_pthreads -lpthread 

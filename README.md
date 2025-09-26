@@ -170,21 +170,10 @@
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         int ret = event_base_dispatch(base);
         ```
+        后续会接着分析该问题。
 
+6. 2025.9.26
 
-
-
-         从判断语句的其中两个条件来看，`!event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)`应该分别表示：有事件和有激活的事件，因此通过输出发现，注册的事件是2没有问题(`read_callback`和`event_callback`), 但处于活跃状态的事件却是0, 因此事件循环会结束，并返回1。
-        ```cpp
-        int active = event_base_get_num_events(base, EVENT_BASE_COUNT_ACTIVE);   # 0
-        int added = event_base_get_num_events(base, EVENT_BASE_COUNT_ADDED);     # 2
-        ```
-        通过测试发现，即使不连接服务器，`event_base_dispatch(base)`都是能正常阻塞的：
-        ```cpp
-        struct bufferevent* bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
-        bufferevent_setcb(bev_, read_callback, NULL, event_callback, NULL);
-        bufferevent_enable(bev_, EV_READ | EV_WRITE);
-
-        std::thread t1(event_loop_start, base_); 
-        t1.join();
-        ```
+    - 实现了云存储服务的配置文件的加载以及服务器的建立，并且与异步日志系统对接。
+    - 使用CMake对项目构建系统的架构设计。
+        ![](img/configuration.png)

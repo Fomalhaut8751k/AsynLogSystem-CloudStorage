@@ -78,7 +78,7 @@ namespace mylog
         {
             for(auto item: LoggerMap)
             {
-                std::cerr << item.first << " " << item.second << " " << item.second->getLoggerName() << endl;
+                std::cerr << item.first << " " << item.second << " " << item.second->getLoggerName() << std::endl;
             }
         }
 
