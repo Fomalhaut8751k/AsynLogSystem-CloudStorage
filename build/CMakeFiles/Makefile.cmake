@@ -49,5 +49,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
-  "src/server/CMakeFiles/CloudStorage.dir/DependInfo.cmake"
+  "src/server/CMakeFiles/Service.dir/DependInfo.cmake"
+  "src/client/CMakeFiles/Client.dir/DependInfo.cmake"
   )

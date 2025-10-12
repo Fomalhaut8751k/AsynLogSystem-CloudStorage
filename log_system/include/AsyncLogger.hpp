@@ -27,7 +27,7 @@ protected:
     mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
 
 public:
-    AbstractAsyncLogger():threadpool_(nullptr){}
+    AbstractAsyncLogger(): threadpool_(nullptr){}
     virtual ~AbstractAsyncLogger() = default;
 
     virtual void setLevel(mylog::LogLevel) = 0;
@@ -160,7 +160,7 @@ public:
     {
         std::string unformatted_message = log_message.first;
         mylog::LogLevel log_level = log_message.second;
-        
+
         if(log_level == mylog::LogLevel::DEBUG) { Debug(unformatted_message); }
         else if(log_level == mylog::LogLevel::INFO) { Info(unformatted_message); }
         else if(log_level == mylog::LogLevel::WARN) { Warn(unformatted_message); }
@@ -189,15 +189,14 @@ public:
 
 namespace mylog
 {
-    using AbstractAsyncLoggerPtr = std::shared_ptr<AbstractAsyncLogger>;
-
     // 具体的产品(异步日志器)类
     class AsyncLogger: public AbstractAsyncLogger
     {
     private:
 
     public:
-        using ptr = std::shared_ptr<AsyncLogger>;
+        using ptr = std::shared_ptr<AbstractAsyncLogger>;
+        using n_ptr = AbstractAsyncLogger*;
 
         AsyncLogger():AbstractAsyncLogger(){}
         ~AsyncLogger()
@@ -245,7 +244,7 @@ namespace mylog
             async_logger_->setThreadPool(thread_pool_);
         }
 
-        AbstractAsyncLoggerPtr Build(mylog::LogLevel level = mylog::LogLevel::INFO)
+        AsyncLogger::ptr Build(mylog::LogLevel level = mylog::LogLevel::INFO)
         {
             async_logger_->setLevel(level);
             async_logger_->setAsyncWorker();

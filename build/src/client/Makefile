@@ -116,6 +116,68 @@ depend:
 	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
+# Convenience name for target.
+src/client/CMakeFiles/Client.dir/rule:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/client/CMakeFiles/Client.dir/rule
+.PHONY : src/client/CMakeFiles/Client.dir/rule
+
+# Convenience name for target.
+Client: src/client/CMakeFiles/Client.dir/rule
+.PHONY : Client
+
+# fast build rule for target.
+Client/fast:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/build
+.PHONY : Client/fast
+
+Test.o: Test.cpp.o
+.PHONY : Test.o
+
+# target to build an object file
+Test.cpp.o:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/Test.cpp.o
+.PHONY : Test.cpp.o
+
+Test.i: Test.cpp.i
+.PHONY : Test.i
+
+# target to preprocess a source file
+Test.cpp.i:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/Test.cpp.i
+.PHONY : Test.cpp.i
+
+Test.s: Test.cpp.s
+.PHONY : Test.s
+
+# target to generate assembly for a file
+Test.cpp.s:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/Test.cpp.s
+.PHONY : Test.cpp.s
+
+base64.o: base64.cpp.o
+.PHONY : base64.o
+
+# target to build an object file
+base64.cpp.o:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/base64.cpp.o
+.PHONY : base64.cpp.o
+
+base64.i: base64.cpp.i
+.PHONY : base64.i
+
+# target to preprocess a source file
+base64.cpp.i:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/base64.cpp.i
+.PHONY : base64.cpp.i
+
+base64.s: base64.cpp.s
+.PHONY : base64.s
+
+# target to generate assembly for a file
+base64.cpp.s:
+	cd /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build && $(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/base64.cpp.s
+.PHONY : base64.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -124,6 +186,13 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... Client"
+	@echo "... Test.o"
+	@echo "... Test.i"
+	@echo "... Test.s"
+	@echo "... base64.o"
+	@echo "... base64.i"
+	@echo "... base64.s"
 .PHONY : help
 
 
