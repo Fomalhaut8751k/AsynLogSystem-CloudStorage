@@ -183,8 +183,73 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /usr/include/c++/11/istream
  /usr/include/c++/11/bits/istream.tcc
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/Service.hpp
- /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/Config.hpp
- /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/json.hpp
+ /usr/local/include/event.h
+ /usr/local/include/event2/event-config.h
+ /usr/include/x86_64-linux-gnu/sys/time.h
+ /usr/local/include/evutil.h
+ /usr/local/include/event2/util.h
+ /usr/local/include/event2/visibility.h
+ /usr/include/netdb.h
+ /usr/include/netinet/in.h
+ /usr/include/x86_64-linux-gnu/sys/socket.h
+ /usr/include/x86_64-linux-gnu/bits/types/struct_iovec.h
+ /usr/include/x86_64-linux-gnu/bits/socket.h
+ /usr/include/x86_64-linux-gnu/bits/socket_type.h
+ /usr/include/x86_64-linux-gnu/bits/sockaddr.h
+ /usr/include/x86_64-linux-gnu/asm/socket.h
+ /usr/include/asm-generic/socket.h
+ /usr/include/linux/posix_types.h
+ /usr/include/linux/stddef.h
+ /usr/include/x86_64-linux-gnu/asm/posix_types.h
+ /usr/include/x86_64-linux-gnu/asm/posix_types_64.h
+ /usr/include/asm-generic/posix_types.h
+ /usr/include/x86_64-linux-gnu/asm/bitsperlong.h
+ /usr/include/asm-generic/bitsperlong.h
+ /usr/include/x86_64-linux-gnu/asm/sockios.h
+ /usr/include/asm-generic/sockios.h
+ /usr/include/x86_64-linux-gnu/bits/types/struct_osockaddr.h
+ /usr/include/x86_64-linux-gnu/bits/in.h
+ /usr/include/rpc/netdb.h
+ /usr/include/x86_64-linux-gnu/bits/types/sigevent_t.h
+ /usr/include/x86_64-linux-gnu/bits/types/__sigval_t.h
+ /usr/include/x86_64-linux-gnu/bits/netdb.h
+ /usr/local/include/event2/event_struct.h
+ /usr/local/include/event2/keyvalq_struct.h
+ /usr/local/include/event2/event.h
+ /usr/local/include/event2/event_compat.h
+ /usr/local/include/event2/buffer.h
+ /usr/include/x86_64-linux-gnu/sys/uio.h
+ /usr/include/x86_64-linux-gnu/bits/uio_lim.h
+ /usr/include/x86_64-linux-gnu/bits/uio-ext.h
+ /usr/local/include/event2/buffer_compat.h
+ /usr/local/include/event2/bufferevent.h
+ /usr/local/include/event2/bufferevent_struct.h
+ /usr/local/include/event2/bufferevent_compat.h
+ /usr/local/include/event2/tag.h
+ /usr/local/include/event2/tag_compat.h
+ /usr/local/include/event2/listener.h
+ /usr/include/x86_64-linux-gnu/sys/queue.h
+ /usr/local/include/evhttp.h
+ /usr/local/include/event2/http.h
+ /usr/local/include/event2/http_struct.h
+ /usr/local/include/event2/http_compat.h
+ /usr/include/fcntl.h
+ /usr/include/x86_64-linux-gnu/bits/fcntl.h
+ /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h
+ /usr/include/linux/falloc.h
+ /usr/include/x86_64-linux-gnu/bits/stat.h
+ /usr/include/x86_64-linux-gnu/bits/struct_stat.h
+ /usr/include/x86_64-linux-gnu/sys/stat.h
+ /usr/include/x86_64-linux-gnu/bits/statx.h
+ /usr/include/linux/stat.h
+ /usr/include/linux/types.h
+ /usr/include/x86_64-linux-gnu/asm/types.h
+ /usr/include/asm-generic/types.h
+ /usr/include/asm-generic/int-ll64.h
+ /usr/include/x86_64-linux-gnu/bits/statx-generic.h
+ /usr/include/x86_64-linux-gnu/bits/types/struct_statx_timestamp.h
+ /usr/include/x86_64-linux-gnu/bits/types/struct_statx.h
+ /usr/include/c++/11/regex
  /usr/include/c++/11/algorithm
  /usr/include/c++/11/utility
  /usr/include/c++/11/bits/stl_relops.h
@@ -215,17 +280,23 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /usr/include/c++/11/bits/stl_bvector.h
  /usr/include/c++/11/bits/vector.tcc
  /usr/include/c++/11/pstl/execution_defs.h
- /usr/include/c++/11/cassert
- /usr/include/assert.h
- /usr/include/c++/11/ciso646
- /usr/include/c++/11/cstddef
+ /usr/include/c++/11/bitset
  /usr/include/c++/11/iterator
  /usr/include/c++/11/bits/stream_iterator.h
+ /usr/include/c++/11/locale
+ /usr/include/c++/11/bits/locale_facets_nonio.h
+ /usr/include/c++/11/ctime
+ /usr/include/x86_64-linux-gnu/c++/11/bits/time_members.h
+ /usr/include/x86_64-linux-gnu/c++/11/bits/messages_members.h
+ /usr/include/libintl.h
+ /usr/include/c++/11/bits/codecvt.h
+ /usr/include/c++/11/bits/locale_facets_nonio.tcc
+ /usr/include/c++/11/bits/locale_conv.h
+ /usr/include/c++/11/bits/unique_ptr.h
  /usr/include/c++/11/memory
  /usr/include/c++/11/bits/stl_raw_storage_iter.h
  /usr/include/c++/11/bits/align.h
  /usr/include/c++/11/bit
- /usr/include/c++/11/bits/unique_ptr.h
  /usr/include/c++/11/bits/shared_ptr.h
  /usr/include/c++/11/bits/shared_ptr_base.h
  /usr/include/c++/11/bits/allocated_ptr.h
@@ -235,16 +306,47 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /usr/include/c++/11/bits/atomic_lockfree_defines.h
  /usr/include/c++/11/backward/auto_ptr.h
  /usr/include/c++/11/pstl/glue_memory_defs.h
+ /usr/include/c++/11/sstream
+ /usr/include/c++/11/bits/sstream.tcc
+ /usr/include/c++/11/stack
+ /usr/include/c++/11/deque
+ /usr/include/c++/11/bits/stl_deque.h
+ /usr/include/c++/11/bits/deque.tcc
+ /usr/include/c++/11/bits/stl_stack.h
+ /usr/include/c++/11/map
+ /usr/include/c++/11/bits/stl_tree.h
+ /usr/include/c++/11/bits/stl_map.h
+ /usr/include/c++/11/bits/stl_multimap.h
+ /usr/include/c++/11/cstring
+ /usr/include/string.h
+ /usr/include/strings.h
+ /usr/include/c++/11/bits/regex_constants.h
+ /usr/include/c++/11/bits/regex_error.h
+ /usr/include/c++/11/bits/regex_automaton.h
+ /usr/include/c++/11/bits/regex_automaton.tcc
+ /usr/include/c++/11/bits/regex_scanner.h
+ /usr/include/c++/11/bits/regex_scanner.tcc
+ /usr/include/c++/11/bits/regex_compiler.h
+ /usr/include/c++/11/bits/regex_compiler.tcc
+ /usr/include/c++/11/bits/regex.h
+ /usr/include/c++/11/bits/regex.tcc
+ /usr/include/c++/11/bits/regex_executor.h
+ /usr/include/c++/11/bits/regex_executor.tcc
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/base64.h
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/DataManager.hpp
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/Config.hpp
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/Utils.hpp
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/json.hpp
+ /usr/include/c++/11/cassert
+ /usr/include/assert.h
+ /usr/include/c++/11/ciso646
+ /usr/include/c++/11/cstddef
  /usr/include/c++/11/numeric
  /usr/include/c++/11/bits/stl_numeric.h
  /usr/include/c++/11/pstl/glue_numeric_defs.h
  /usr/include/c++/11/forward_list
  /usr/include/c++/11/bits/forward_list.h
  /usr/include/c++/11/bits/forward_list.tcc
- /usr/include/c++/11/map
- /usr/include/c++/11/bits/stl_tree.h
- /usr/include/c++/11/bits/stl_map.h
- /usr/include/c++/11/bits/stl_multimap.h
  /usr/include/c++/11/valarray
  /usr/include/c++/11/cmath
  /usr/include/math.h
@@ -280,81 +382,36 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /usr/include/c++/11/bits/gslice_array.h
  /usr/include/c++/11/bits/mask_array.h
  /usr/include/c++/11/bits/indirect_array.h
- /usr/include/c++/11/cstring
- /usr/include/string.h
- /usr/include/strings.h
- /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/Utils.hpp
- /usr/include/x86_64-linux-gnu/sys/stat.h
- /usr/include/x86_64-linux-gnu/bits/stat.h
- /usr/include/x86_64-linux-gnu/bits/struct_stat.h
- /usr/include/x86_64-linux-gnu/bits/statx.h
- /usr/include/linux/stat.h
- /usr/include/linux/types.h
- /usr/include/x86_64-linux-gnu/asm/types.h
- /usr/include/asm-generic/types.h
- /usr/include/asm-generic/int-ll64.h
- /usr/include/x86_64-linux-gnu/asm/bitsperlong.h
- /usr/include/asm-generic/bitsperlong.h
- /usr/include/linux/posix_types.h
- /usr/include/linux/stddef.h
- /usr/include/x86_64-linux-gnu/asm/posix_types.h
- /usr/include/x86_64-linux-gnu/asm/posix_types_64.h
- /usr/include/asm-generic/posix_types.h
- /usr/include/x86_64-linux-gnu/bits/statx-generic.h
- /usr/include/x86_64-linux-gnu/bits/types/struct_statx_timestamp.h
- /usr/include/x86_64-linux-gnu/bits/types/struct_statx.h
+ /usr/include/jsoncpp/json/json.h
+ /usr/include/jsoncpp/json/config.h
+ /usr/include/jsoncpp/json/allocator.h
+ /usr/include/jsoncpp/json/version.h
+ /usr/include/jsoncpp/json/json_features.h
+ /usr/include/jsoncpp/json/forwards.h
+ /usr/include/jsoncpp/json/reader.h
+ /usr/include/jsoncpp/json/value.h
+ /usr/include/jsoncpp/json/writer.h
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/bundle.h
+ /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h
+ /usr/include/c++/11/chrono
+ /usr/include/c++/11/ratio
+ /usr/include/c++/11/bits/parse_numbers.h
+ /usr/include/c++/11/iomanip
+ /usr/include/c++/11/bits/quoted_string.h
+ /usr/include/c++/11/set
+ /usr/include/c++/11/bits/stl_set.h
+ /usr/include/c++/11/bits/stl_multiset.h
+ /usr/include/c++/11/experimental/filesystem
+ /usr/include/c++/11/experimental/bits/fs_fwd.h
+ /usr/include/c++/11/experimental/bits/fs_path.h
+ /usr/include/c++/11/codecvt
+ /usr/include/c++/11/experimental/bits/fs_dir.h
+ /usr/include/c++/11/experimental/bits/fs_ops.h
  /usr/include/c++/11/fstream
- /usr/include/c++/11/bits/codecvt.h
  /usr/include/x86_64-linux-gnu/c++/11/bits/basic_file.h
  /usr/include/x86_64-linux-gnu/c++/11/bits/c++io.h
  /usr/include/c++/11/bits/fstream.tcc
- /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/Level.hpp
- /usr/local/include/event.h
- /usr/local/include/event2/event-config.h
- /usr/include/x86_64-linux-gnu/sys/time.h
- /usr/local/include/evutil.h
- /usr/local/include/event2/util.h
- /usr/local/include/event2/visibility.h
- /usr/include/netdb.h
- /usr/include/netinet/in.h
- /usr/include/x86_64-linux-gnu/sys/socket.h
- /usr/include/x86_64-linux-gnu/bits/types/struct_iovec.h
- /usr/include/x86_64-linux-gnu/bits/socket.h
- /usr/include/x86_64-linux-gnu/bits/socket_type.h
- /usr/include/x86_64-linux-gnu/bits/sockaddr.h
- /usr/include/x86_64-linux-gnu/asm/socket.h
- /usr/include/asm-generic/socket.h
- /usr/include/x86_64-linux-gnu/asm/sockios.h
- /usr/include/asm-generic/sockios.h
- /usr/include/x86_64-linux-gnu/bits/types/struct_osockaddr.h
- /usr/include/x86_64-linux-gnu/bits/in.h
- /usr/include/rpc/netdb.h
- /usr/include/x86_64-linux-gnu/bits/types/sigevent_t.h
- /usr/include/x86_64-linux-gnu/bits/types/__sigval_t.h
- /usr/include/x86_64-linux-gnu/bits/netdb.h
- /usr/local/include/event2/event_struct.h
- /usr/local/include/event2/keyvalq_struct.h
- /usr/local/include/event2/event.h
- /usr/local/include/event2/event_compat.h
- /usr/local/include/event2/buffer.h
- /usr/include/x86_64-linux-gnu/sys/uio.h
- /usr/include/x86_64-linux-gnu/bits/uio_lim.h
- /usr/include/x86_64-linux-gnu/bits/uio-ext.h
- /usr/local/include/event2/buffer_compat.h
- /usr/local/include/event2/bufferevent.h
- /usr/local/include/event2/bufferevent_struct.h
- /usr/local/include/event2/bufferevent_compat.h
- /usr/local/include/event2/tag.h
- /usr/local/include/event2/tag_compat.h
- /usr/local/include/event2/thread.h
- /usr/include/arpa/inet.h
- /usr/include/c++/11/thread
- /usr/include/c++/11/bits/std_thread.h
- /usr/include/c++/11/bits/this_thread_sleep.h
- /usr/include/c++/11/chrono
- /usr/include/c++/11/ratio
- /usr/include/c++/11/ctime
- /usr/include/c++/11/bits/parse_numbers.h
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/MyLog.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/Manager.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/AsyncLogger.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/AsyncWorker.hpp
@@ -363,6 +420,9 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /usr/include/c++/11/bits/unique_lock.h
  /usr/include/c++/11/condition_variable
  /usr/include/c++/11/atomic
+ /usr/include/c++/11/thread
+ /usr/include/c++/11/bits/std_thread.h
+ /usr/include/c++/11/bits/this_thread_sleep.h
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/AsyncBuffer.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/Message.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/Level.hpp
@@ -371,13 +431,12 @@ src/server/CMakeFiles/CloudStorage.dir/Test.cpp.o
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/Flush.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/MyLog.hpp
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/backlog/ClientBackupLog.hpp
+ /usr/local/include/event2/thread.h
+ /usr/include/arpa/inet.h
  /usr/include/c++/11/future
  /usr/include/c++/11/bits/atomic_futex.h
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/ThreadPool.hpp
  /usr/include/c++/11/queue
- /usr/include/c++/11/deque
- /usr/include/c++/11/bits/stl_deque.h
- /usr/include/c++/11/bits/deque.tcc
  /usr/include/c++/11/bits/stl_queue.h
 
 src/server/CMakeFiles/CloudStorage.dir/base64.cpp.o

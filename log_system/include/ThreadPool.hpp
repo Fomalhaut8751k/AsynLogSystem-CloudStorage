@@ -1,6 +1,7 @@
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
 
+
 #include <thread>
 #include <mutex>
 #include <future>
@@ -8,11 +9,15 @@
 #include <unordered_map>
 #include <functional>
 #include <queue>
+
+// #include "AsyncLogger.hpp"  AsyncLogger.hpp中已经包含了ThreadPool.hpp
 #include "backlog/ClientBackupLog.hpp"
 
 #define INIT_THREADSIZE 8
 #define THREAD_SIZE_THRESHHOLD 8
 #define LOGQUE_MAX_THRESHHOLD 4
+
+// class AbstractAsyncLogger;  // 但是只是申明了类的存在，其方法依然是未知的
 
 namespace mylog
 {
@@ -49,7 +54,6 @@ namespace mylog
     };
     unsigned int Thread::generateId_ = 1;
 
-    // 线程池类（设计为单例模式）
     class ThreadPool
     {
     private:
@@ -57,28 +61,6 @@ namespace mylog
         using tp_atomic_uint = std::atomic_uint16_t;
         using tp_log = std::string;
         // using Task = std::function<void()>;
-
-        ThreadPool(const std::string addr = "127.0.0.1", 
-                    unsigned int port = 8000)
-        {
-            setup(addr, port);
-        }
-
-        ~ThreadPool()   
-        {
-            // std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
-            // std::cerr << "~ThreadPool()" << std::endl;
-            // 线程池析构的时候要把所有事件循环关闭
-            std::unique_lock<std::mutex> lock(logQueMtx_);
-            ThreadPoolRunning_ = false;
-            // 唤醒所有线程，当然不一定所有线程都在睡觉
-            notEmpty_.notify_all();  
-            // 等待所有线程关闭，可能在这里会被通知4次
-            Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
-
-            // std::cout << "~ThreadPool() finish" << std::endl;
-            // std::this_thread::sleep_for(std::chrono::seconds(5));
-        }
 
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool& operator=(const ThreadPool&) = delete;
@@ -164,15 +146,31 @@ namespace mylog
             // std::cout << "【线程池第" << threadid << "个线程关闭】\n" << std::endl;  
         }
 
-    public:
-        static ThreadPool& GetInstance()
+    public:    
+        ThreadPool()
+        { 
+
+        }
+
+        ~ThreadPool()   
         {
-            static ThreadPool threadpool;
-            return threadpool;
+            // std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
+            // std::cerr << "~ThreadPool()" << std::endl;
+            // 线程池析构的时候要把所有事件循环关闭
+            std::unique_lock<std::mutex> lock(logQueMtx_);
+            ThreadPoolRunning_ = false;
+            // 唤醒所有线程，当然不一定所有线程都在睡觉
+            notEmpty_.notify_all();  
+            // 等待所有线程关闭，可能在这里会被通知4次
+            Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
+
+            // std::cout << "~ThreadPool() finish" << std::endl;
+            // std::this_thread::sleep_for(std::chrono::seconds(5));
         }
 
         void setup(std::string server_addr, 
                 unsigned int server_port,
+                // Ptr ptr = nullptr,
                 tp_uint initThreadSize = INIT_THREADSIZE,
                 tp_uint threadSizeThreshHold =  THREAD_SIZE_THRESHHOLD
         )
@@ -188,6 +186,21 @@ namespace mylog
             logQueMaxThreshHold_ = LOGQUE_MAX_THRESHHOLD;
 
             ThreadPoolRunning_ = true;  // 表示线程池正在运行中
+
+            // if(ptr)
+            // {
+            //     // 把初始化配置发送给异步日志系统
+            //     std::string config_log = "";
+            //     config_log += "Initialize threadpool configuration:";
+            //     config_log += "\nTHREAD:";
+            //     config_log += ("\n  init_thread_size: " + std::to_string(initThreadSize_));
+            //     config_log += ("\n  active_thread_number: " + std::to_string(curThreadSize_));
+            //     config_log += ("\n  thread_size_threshhold: " + std::to_string(threadSizeThreshHold_));
+            //     config_log += "\nLOG: ";
+            //     config_log += ("\n  log_queue_threshhold_: " + std::to_string(logQueMaxThreshHold_));
+
+            //     ptr->Log({config_log, mylog::LogLevel::INFO});
+            // }
         }
 
         void startup()

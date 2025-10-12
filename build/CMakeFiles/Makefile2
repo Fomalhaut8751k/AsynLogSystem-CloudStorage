@@ -96,7 +96,7 @@ src/clean: src/client/clean
 # Directory level rules for directory src/client
 
 # Recursive "all" directory target.
-src/client/all:
+src/client/all: src/client/CMakeFiles/Client.dir/all
 .PHONY : src/client/all
 
 # Recursive "preinstall" directory target.
@@ -104,14 +104,14 @@ src/client/preinstall:
 .PHONY : src/client/preinstall
 
 # Recursive "clean" directory target.
-src/client/clean:
+src/client/clean: src/client/CMakeFiles/Client.dir/clean
 .PHONY : src/client/clean
 
 #=============================================================================
 # Directory level rules for directory src/server
 
 # Recursive "all" directory target.
-src/server/all: src/server/CMakeFiles/CloudStorage.dir/all
+src/server/all: src/server/CMakeFiles/Service.dir/all
 .PHONY : src/server/all
 
 # Recursive "preinstall" directory target.
@@ -119,34 +119,60 @@ src/server/preinstall:
 .PHONY : src/server/preinstall
 
 # Recursive "clean" directory target.
-src/server/clean: src/server/CMakeFiles/CloudStorage.dir/clean
+src/server/clean: src/server/CMakeFiles/Service.dir/clean
 .PHONY : src/server/clean
 
 #=============================================================================
-# Target rules for target src/server/CMakeFiles/CloudStorage.dir
+# Target rules for target src/server/CMakeFiles/Service.dir
 
 # All Build rule for target.
-src/server/CMakeFiles/CloudStorage.dir/all:
-	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/CloudStorage.dir/build.make src/server/CMakeFiles/CloudStorage.dir/depend
-	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/CloudStorage.dir/build.make src/server/CMakeFiles/CloudStorage.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles --progress-num=1,2,3 "Built target CloudStorage"
-.PHONY : src/server/CMakeFiles/CloudStorage.dir/all
+src/server/CMakeFiles/Service.dir/all:
+	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/Service.dir/build.make src/server/CMakeFiles/Service.dir/depend
+	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/Service.dir/build.make src/server/CMakeFiles/Service.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles --progress-num=4,5,6 "Built target Service"
+.PHONY : src/server/CMakeFiles/Service.dir/all
 
 # Build rule for subdir invocation for target.
-src/server/CMakeFiles/CloudStorage.dir/rule: cmake_check_build_system
+src/server/CMakeFiles/Service.dir/rule: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles 3
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/server/CMakeFiles/CloudStorage.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/server/CMakeFiles/Service.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles 0
-.PHONY : src/server/CMakeFiles/CloudStorage.dir/rule
+.PHONY : src/server/CMakeFiles/Service.dir/rule
 
 # Convenience name for target.
-CloudStorage: src/server/CMakeFiles/CloudStorage.dir/rule
-.PHONY : CloudStorage
+Service: src/server/CMakeFiles/Service.dir/rule
+.PHONY : Service
 
 # clean rule for target.
-src/server/CMakeFiles/CloudStorage.dir/clean:
-	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/CloudStorage.dir/build.make src/server/CMakeFiles/CloudStorage.dir/clean
-.PHONY : src/server/CMakeFiles/CloudStorage.dir/clean
+src/server/CMakeFiles/Service.dir/clean:
+	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/Service.dir/build.make src/server/CMakeFiles/Service.dir/clean
+.PHONY : src/server/CMakeFiles/Service.dir/clean
+
+#=============================================================================
+# Target rules for target src/client/CMakeFiles/Client.dir
+
+# All Build rule for target.
+src/client/CMakeFiles/Client.dir/all:
+	$(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/depend
+	$(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles --progress-num=1,2,3 "Built target Client"
+.PHONY : src/client/CMakeFiles/Client.dir/all
+
+# Build rule for subdir invocation for target.
+src/client/CMakeFiles/Client.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles 3
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/client/CMakeFiles/Client.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/build/CMakeFiles 0
+.PHONY : src/client/CMakeFiles/Client.dir/rule
+
+# Convenience name for target.
+Client: src/client/CMakeFiles/Client.dir/rule
+.PHONY : Client
+
+# clean rule for target.
+src/client/CMakeFiles/Client.dir/clean:
+	$(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/clean
+.PHONY : src/client/CMakeFiles/Client.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

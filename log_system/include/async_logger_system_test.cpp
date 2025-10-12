@@ -1,5 +1,5 @@
 // #include "AsyncLogger.hpp"
-#include "Manager.hpp"
+#include "MyLog.hpp"
 // #include "ThreadPool.hpp"
 
 #include <iostream>
@@ -11,26 +11,26 @@ using namespace mylog;
 
 void threadHandler1(const char* message, const char* logger_name)
 {
-    mylog::LoggerManager::GetInstance().GetLogger(logger_name)->Debug(message);
+    mylog::GetLogger(logger_name)->Debug(message);
 }
 
 void threadHandler2(const char* message, const char* logger_name)
 {
-    mylog::LoggerManager::GetInstance().GetLogger(logger_name)->Info(message);
+    mylog::GetLogger(logger_name)->Info(message);
 }
 
 void threadHandler3(const char* message, const char* logger_name)
 {
-    mylog::LoggerManager::GetInstance().GetLogger(logger_name)->Warn(message);
+    mylog::GetLogger(logger_name)->Warn(message);
 }
 
 void threadHandler4(const char* message, const char* logger_name)
 {
-    mylog::LoggerManager::GetInstance().GetLogger(logger_name)->Error(message);
+    mylog::GetLogger(logger_name)->Error(message);
 }
 void threadHandler5(const char* message, const char* logger_name)
 {
-    mylog::LoggerManager::GetInstance().GetLogger(logger_name)->Fatal(message);
+    mylog::GetLogger(logger_name)->Fatal(message);
 }
 
 int main()
@@ -39,16 +39,17 @@ int main()
     // mylog::LoggerManager::GetInstance().GetLogger("default")->Info("pdcHelloWorld");
 
     // 启动线程池
-    mylog::ThreadPool::GetInstance().setup("127.0.0.1", 8000);
-    mylog::ThreadPool::GetInstance().startup();
+    std::unique_ptr<mylog::ThreadPool> threadpool_ = std::make_unique<mylog::ThreadPool>();
+    threadpool_->setup("127.0.0.1", 8000);
+    threadpool_->startup();
 
-    mylog::LoggerManager::GetInstance().AddDefaultLogger(&mylog::ThreadPool::GetInstance());
+    mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
 
     // 使用日志器建造者一个名字叫asynclogger的日志器
     std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
     Glb->BuildLoggerName("asynclogger");
     Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", 700);
-    Glb->BuildLoggerThreadPool(&mylog::ThreadPool::GetInstance());
+    Glb->BuildLoggerThreadPool(threadpool_.get());
 
     // 将日志器添加到日志管理者中，管理者是全局单例类 
     mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));   // 小于Warn的Debug和Info不会被写到日志当中

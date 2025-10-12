@@ -117,17 +117,30 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named CloudStorage
+# Target rules for targets named Service
 
 # Build rule for target.
-CloudStorage: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CloudStorage
-.PHONY : CloudStorage
+Service: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 Service
+.PHONY : Service
 
 # fast build rule for target.
-CloudStorage/fast:
-	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/CloudStorage.dir/build.make src/server/CMakeFiles/CloudStorage.dir/build
-.PHONY : CloudStorage/fast
+Service/fast:
+	$(MAKE) $(MAKESILENT) -f src/server/CMakeFiles/Service.dir/build.make src/server/CMakeFiles/Service.dir/build
+.PHONY : Service/fast
+
+#=============================================================================
+# Target rules for targets named Client
+
+# Build rule for target.
+Client: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 Client
+.PHONY : Client
+
+# fast build rule for target.
+Client/fast:
+	$(MAKE) $(MAKESILENT) -f src/client/CMakeFiles/Client.dir/build.make src/client/CMakeFiles/Client.dir/build
+.PHONY : Client/fast
 
 # Help Target
 help:
@@ -137,7 +150,8 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... CloudStorage"
+	@echo "... Client"
+	@echo "... Service"
 .PHONY : help
 
 

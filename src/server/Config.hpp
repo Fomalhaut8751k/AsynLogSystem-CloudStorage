@@ -2,19 +2,19 @@
 #define CONFIG_H
 
 // #include <filesystem>
-#include "json.hpp"
 #include "Utils.hpp"
 
 #include <iostream>
 #include <sys/stat.h>
 #include <fstream>
 #include <cstring>
+#include <mutex>
 
-#include "../../../log_system/include/Level.hpp"
+// #include "../../../log_system/include/Level.hpp"
 
 using json = nlohmann::json;
 
-namespace mylog
+namespace mystorage
 {
     class Config
     {
@@ -82,9 +82,9 @@ namespace mylog
 
             // 把初始化配置发送给异步日志系统
             std::string config_log = "";
-            config_log += "Initialize storage configuration:";
+            config_log += "Initialize cloudStorage configuration:";
             config_log += "\nSERVER:";
-            config_log += ("\n  server_ip: " + server_ip_);
+            config_log += ("\n  server_addr_ip: " + server_ip_);
             config_log += ("\n  server_port: " + std::to_string(server_port_));
             config_log += "\nSTORAGE_DIR: ";
             config_log += ("\n  download_prefix: " + download_prefix_);

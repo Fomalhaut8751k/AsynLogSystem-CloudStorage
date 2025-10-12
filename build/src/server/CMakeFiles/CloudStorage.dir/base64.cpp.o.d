@@ -1,7 +1,7 @@
 src/server/CMakeFiles/CloudStorage.dir/base64.cpp.o: \
  /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/base64.cpp \
  /usr/include/stdc-predef.h \
- /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server/base64.h \
+ /home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/thirdparty/base64.h \
  /usr/include/c++/11/string \
  /usr/include/x86_64-linux-gnu/c++/11/bits/c++config.h \
  /usr/include/x86_64-linux-gnu/c++/11/bits/os_defines.h \

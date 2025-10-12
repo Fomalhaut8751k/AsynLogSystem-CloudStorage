@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = -DBOOST_BIND_GLOBAL_PLACEHOLDERS
 
-CXX_INCLUDES = -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/backlog
+CXX_INCLUDES = -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/log_system/include/backlog -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/src/server -I/home/wzd/桌面/projects/AsynLogSystem-CloudStorage/AsynLogSystem-CloudStorage/thirdparty
 
-CXX_FLAGS = -g
+CXX_FLAGS = -g -std=c++17
 

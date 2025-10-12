@@ -21,7 +21,7 @@ namespace mylog
         LoggerManager& operator=(const LoggerManager&) = delete;  // 禁止等号赋值  
 
         // 存放日志器
-        std::unordered_map<std::string, mylog::AbstractAsyncLoggerPtr> LoggerMap;
+        std::unordered_map<std::string, AsyncLogger::ptr> LoggerMap;
         // 控制线程互斥
         std::mutex LoggerManagerMutex_;
 
@@ -38,13 +38,13 @@ namespace mylog
         {
             std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
             Glb->BuildLoggerName("default");
-            Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", -1);
+            Glb->BuildLoggerFlush<mylog::ConsoleFlush>("./log/app.log", -1);
             Glb->BuildLoggerThreadPool(thread_pool);
             LoggerMap["default"] = Glb->Build();
         }
 
         // 添加日志器
-        void AddLogger(mylog::AbstractAsyncLoggerPtr async_logger)
+        void AddLogger(AsyncLogger::ptr async_logger)
         {
             std::unique_lock<std::mutex> lock(LoggerManagerMutex_);
             // 判断一下是否存在
@@ -54,8 +54,9 @@ namespace mylog
         }
 
         // 用户获取默认日志器
-        mylog::AbstractAsyncLoggerPtr DefaultLogger()
+        AsyncLogger::ptr DefaultLogger()
         {
+            std::unique_lock<std::mutex> lock(LoggerManagerMutex_);
             if(LoggerMap.find("default") == LoggerMap.end())
             {
                 std::cerr << "default logger is not exist" << std::endl;
@@ -65,8 +66,9 @@ namespace mylog
         }
 
         // 用户获取日志器
-        mylog::AbstractAsyncLoggerPtr GetLogger(const std::string& name)
+        AsyncLogger::ptr GetLogger(const std::string& name)
         {
+            std::unique_lock<std::mutex> lock(LoggerManagerMutex_);
             if(LoggerMap.find(name) != LoggerMap.end())
                 return LoggerMap[name];    
             std::cerr << "can not find a logger name " << name << std::endl;
