@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
     
     if (command == "upload" && argc >= 3) 
     {
-        client.Upload(argv[2]);
+        client.Upload(argv[2], argv[3]);
     } 
     else if (command == "download" && argc >= 4) 
     {

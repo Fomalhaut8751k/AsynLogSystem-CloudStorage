@@ -1,1 +1,1 @@
-/usr/bin/c++ -g -rdynamic CMakeFiles/Client.dir/Test.cpp.o CMakeFiles/Client.dir/base64.cpp.o -o ../../../bin/Client  -lcurl 
+/usr/bin/c++ -g -static -rdynamic CMakeFiles/Client.dir/Test.cpp.o CMakeFiles/Client.dir/base64.cpp.o -o ../../../bin/Client  -static 
