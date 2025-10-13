@@ -97,7 +97,7 @@ namespace mystorage
                 return -1;
             }
             return st.st_size;
-    }
+        }
 
         // 获取文件最近访问时间
         time_t LastAccessTime()
@@ -159,7 +159,8 @@ namespace mystorage
                 return -1;
             }
             // 打开文件
-            std::ifstream file(filename_);
+            std::ifstream file;
+            file.open(filename_.c_str(), std::ios::binary);
             if(!file.is_open())
             {
                 mylog::GetLogger("default")->Log({"the file \" " + \
@@ -167,15 +168,18 @@ namespace mystorage
                 return -1;
             }
             
-            file.seekg(pos);  // 定位到指定位置
+            file.seekg(pos, std::ios::beg);  // 定位到指定位置
+            content->resize(len);
             file.read(&(*content)[0], len);
 
-            std::streamsize bytesred = file.gcount();
-            if(bytesred < len)
+            if(!file.good())
             {
-                content->resize(bytesred);
-                mylog::GetLogger("default")->Log({"only read " + std::to_string(bytesred) + " from file, should " + std::to_string(len),  mylog::LogLevel::WARN});
+                mylog::GetLogger("default")->Log({"read file content failed", mylog::LogLevel::ERROR});
+                file.close();
+                return -1;
             }
+
+            file.close();
             return 0;
         }
 
@@ -188,7 +192,7 @@ namespace mystorage
         // 写文件
         int SetContent(const char* content, size_t len)
         {
-            std::ofstream file(filename_.c_str(), std::ios::app);
+            std::ofstream file(filename_.c_str(), std::ios::binary);
             if(!file.is_open())
             {
                 mylog::GetLogger("default")->Log({"file \" " +  filename_  + "\" open failed", mylog::LogLevel::WARN});

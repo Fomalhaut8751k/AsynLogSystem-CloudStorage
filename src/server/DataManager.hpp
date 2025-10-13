@@ -87,15 +87,15 @@ namespace mystorage
         int InitLoad()
         {
             mystorage::FileUtil fu(storage_file_);
-            if(-1 != fu.Exists())  // 没有storage.data，就说明不需要加载
+            if(!fu.Exists())  // 没有storage.data，就说明不需要加载
             {
-                mylog::GetLogger("default")->Log({"load storage data from " + storage_file_, mylog::LogLevel::INFO});
                 return -1;
             }
+            mylog::GetLogger("default")->Log({"load storage data from " + storage_file_ , mylog::LogLevel::INFO});
             // 从storage.dat中读取内容
             std::string content;
             if(-1 == fu.GetContent(&content))
-            {
+            {   
                 mylog::GetLogger("default")->Log({"Initialize datamanager configuration failed!",  mylog::LogLevel::ERROR});
                 return -1;
             }
@@ -207,7 +207,7 @@ namespace mystorage
             return 0;
         }
 
-        // 通过url后去StorageInfo
+        // 通过url获取StorageInfo
         int GetOneByURL(const std::string& key, StorageInfo* info)  // url是key
         {
             std::unique_lock<std::mutex> lock(mutex_);

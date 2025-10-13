@@ -72,6 +72,11 @@ namespace mystorage
             {
                 ListShow(req, arg);
             }
+            // 把文件列表发送给客户端
+            else if(path == "/list")
+            {
+                ListShowForClient(req, arg);
+            }
             else
             {
                 evhttp_send_reply(req, HTTP_NOTFOUND, "Not Found", NULL);
@@ -116,7 +121,16 @@ namespace mystorage
             filename = base64_decode(filename);
 
             // 获取存储类型，客户端自定义请求头，StorageInfo
-            std::string storage_type = evhttp_find_header(req->input_headers, "StorageType");
+            std::string storage_type;
+            const char* storage_type_ = evhttp_find_header(req->input_headers, "StorageType");
+            if(nullptr != storage_type_)
+            {
+                storage_type = storage_type_;
+            }
+            else
+            {
+                storage_type = "low";
+            }
             // 组织存储路径
             std::string storage_path;
             if(storage_type == "deep")
@@ -174,6 +188,11 @@ namespace mystorage
             StorageInfo info;
             info.NewStorageInfo(storage_path);
             data_->Insert(info);
+
+            struct evbuffer* output_buf = evhttp_request_get_output_buffer(req);
+            std::string json_response = "{\"status\":\"success\",\"message\":\"File uploaded successfully\",\"filename\":\"" + filename + "\"}\n";
+            evbuffer_add(output_buf, json_response.c_str(), json_response.size());
+            evhttp_add_header(req->output_headers, "Content-Type", "application/json");
 
             evhttp_send_reply(req, HTTP_OK, "Success", NULL);
             mylog::GetLogger("default")->Log({"Upload finish", mylog::LogLevel::INFO});
@@ -285,6 +304,49 @@ namespace mystorage
             evhttp_add_header(req->output_headers, "Content-Type", "text/html;charset=utf-8");
             evhttp_send_reply(req, HTTP_OK, NULL, NULL);
             mylog::GetLogger("default")->Log({"ListShow() finish", mylog::LogLevel::INFO});
+
+            return 0;
+        }
+
+        static int ListShowForClient(struct evhttp_request* req, void* arg)
+        {
+            mylog::GetLogger("default")->Log({"ClientListFiles()", mylog::LogLevel::INFO});
+    
+            // 获取所有的StorageInfo
+            std::vector<StorageInfo> arry;
+            if(data_->GetAll(&arry) == -1)
+            {
+                mylog::GetLogger("default")->Log({"ClientListFiles() fail when load storageinfo", mylog::LogLevel::ERROR});
+                // 返回错误响应
+                struct evbuffer* buf = evhttp_request_get_output_buffer(req);
+                std::string error_response = "{\"status\":\"error\",\"message\":\"Failed to load file list\"}";
+                evbuffer_add(buf, error_response.c_str(), error_response.size());
+                evhttp_add_header(req->output_headers, "Content-Type", "application/json;charset=utf-8");
+                evhttp_send_reply(req, HTTP_INTERNAL, NULL, NULL);
+                return -1;
+            }
+
+            // 构建JSON响应
+            std::string json_response = "{\"files\":[";
+            
+            for (size_t i = 0; i < arry.size(); ++i) {
+                json_response += "\n\t{";
+                json_response += arry[i].url_;
+                json_response += "\t      ";
+                json_response += formatSize(arry[i].fsize_);
+                json_response += "}";
+            }
+            json_response += "\n]}";
+
+            // 获取请求输出的evbuffer
+            struct evbuffer* buf = evhttp_request_get_output_buffer(req);
+            
+            // 添加JSON数据到响应
+            evbuffer_add(buf, json_response.c_str(), json_response.size());
+            evhttp_add_header(req->output_headers, "Content-Type", "application/json;charset=utf-8");
+            evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+            
+            mylog::GetLogger("default")->Log({"ClientListFiles() finish, returned " + std::to_string(arry.size()) + " files", mylog::LogLevel::INFO});
 
             return 0;
         }
