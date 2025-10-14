@@ -18,14 +18,26 @@ int main(int argc, char* argv[])
     {
         client.Upload(argv[2], argv[3]);
     } 
-    else if (command == "download" && argc >= 4) 
+    else if (command == "download" && argc >= 3) 
     {
-        client.Download(argv[2], argv[3]);
+        if(argc ==3)  // 没有指定保存路径，就下载在当前路径
+        {
+            client.Download(argv[2], "./" + std::string(argv[2]));
+        }
+        else
+        {
+            client.Download(argv[2], argv[3]);
+        }
+        
     } 
     else if (command == "list") 
     {
         client.ListFiles();
     } 
+    else if (command == "remove")
+    {
+        client.Remove(argv[2]);
+    }
     else 
     {
         std::cerr << "Invalid command or arguments" << std::endl;

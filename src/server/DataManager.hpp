@@ -189,6 +189,26 @@ namespace mystorage
             return 0;  
         }
 
+        // 从table_中删除指定的StorageInfo
+        int Erase(const std::string& url)
+        {
+            mylog::GetLogger("default")->Log({"Remove storageinfo start", mylog::LogLevel::INFO});
+            
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                table_.erase(url);
+            }
+
+            if(Storage() == -1)
+            {
+                mylog::GetLogger("default")->Log({"Update storageinfo failed", mylog::LogLevel::INFO});
+                return -1;
+            }
+            mylog::GetLogger("default")->Log({"Remove storageinfo success", mylog::LogLevel::INFO});
+            return 0;
+            
+        }
+
 
         int Update(const StorageInfo& info)
         {

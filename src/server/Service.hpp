@@ -77,6 +77,11 @@ namespace mystorage
             {
                 ListShowForClient(req, arg);
             }
+            // 删除文件
+            else if(path == "/remove")
+            {
+                Remove(req, arg);
+            }
             else
             {
                 evhttp_send_reply(req, HTTP_NOTFOUND, "Not Found", NULL);
@@ -373,6 +378,8 @@ namespace mystorage
             std::string resource_path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
             resource_path = UrlDecode(resource_path);
 
+            std::cerr << "resource_path: " << resource_path << std::endl;
+
             // 根据resource_path在tabel_中搜索对应的StorageInfo
             data_->GetOneByURL(resource_path, &info);
             /*
@@ -479,6 +486,45 @@ namespace mystorage
             {
                 remove(download_path.c_str());  // 删除文件
             }
+            return 0;
+        }
+
+        // 删除文件
+        static int Remove(struct evhttp_request* req, void* arg)
+        {
+            mylog::GetLogger("default")->Log({"Remove start", mylog::LogLevel::INFO});
+
+            struct evbuffer* buf = evhttp_request_get_input_buffer(req);
+
+            // 获取文件名
+            std::string filename = evhttp_find_header(req->input_headers, "FileName");
+            // 解码文件名
+            filename = base64_decode(filename);
+
+            mylog::GetLogger("default")->Log({"The file: " + filename + " will be remove", mylog::LogLevel::INFO});
+
+            mystorage::StorageInfo info;
+            if(data_->GetOneByURL("/download/" + filename, &info) == -1)
+            {
+                mylog::GetLogger("default")->Log({"file is not exist", mylog::LogLevel::WARN});
+                evhttp_send_reply(req, HTTP_OK, "0", NULL);
+                return -1;
+            }
+
+            // 删除文件
+            remove(info.storage_path_.c_str());
+            // 从table_中删除对应的storageinfo并更新
+            data_->Erase(info.url_);
+            // evhttp_send_reply(req, HTTP_OK, "0", NULL);
+
+            struct evbuffer* output_buf = evhttp_request_get_output_buffer(req);
+            std::string json_response = "{\"status\":\"success\",\"message\":\"File remove successfully\",\"filename\":\"" + filename + "\"}\n";
+            evbuffer_add(output_buf, json_response.c_str(), json_response.size());
+            // evhttp_add_header(req->output_headers, "Content-Type", "application/json");
+
+            evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+            mylog::GetLogger("default")->Log({"Remove success", mylog::LogLevel::INFO});
+
             return 0;
         }
 

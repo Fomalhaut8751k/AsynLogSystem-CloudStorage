@@ -145,4 +145,63 @@ public:
             return false;
         }
     }
+
+
+    // 删除某个文件
+    bool Remove(const std::string& filename)
+    {
+        // 对文件名进行 Base64 编码
+        std::string encoded_name = base64_encode(filename);
+
+        // 构建 wget 命令
+        std::string command = "wget -q -O - ";
+        command += "--header=\"FileName: " + encoded_name + "\" ";
+        command += "\"" + server_url_ + "/remove\" ";
+        command += "2>/dev/null";
+        
+        std::cout << "Remove file: " << filename << std::endl;
+        std::cout << "Executing: " << command << std::endl;
+        
+        // 使用 popen 来捕获输出
+        FILE* pipe = popen(command.c_str(), "r");
+        if (!pipe) {
+            std::cerr << "Failed to execute wget command" << std::endl;
+            return false;
+        }
+        
+        char buffer[128];
+        std::string result = "";
+        while (!feof(pipe)) {
+            if (fgets(buffer, 128, pipe) != NULL)
+                result += buffer;
+        }
+        
+        int return_code = pclose(pipe);
+
+        // std::cerr << return_code << " || " << result << std::endl;
+        // Json::Value response;
+        // mystorage::JsonUtil::UnSerialize(result, &response);
+        
+        // if ("success" == response["status"].asString()) {
+        //     std::cout << "Remove file: " + filename + " success" << std::endl;
+        //     return true;
+        // } else {
+        //     std::cerr << "Remove file: " + filename + " failed" << std::endl;
+        //     return false;
+        // }
+
+        // 若删除成功，服务器会发来一条响应的json串
+        if(result == "")
+        {
+            std::cout << "Remove file: " + filename + " failed" << std::endl;
+            return false;
+        }
+        else
+        {
+            std::cout << "Remove file: " + filename + " success" << std::endl;
+            return true;
+        }
+
+        return true;
+    }
 };
