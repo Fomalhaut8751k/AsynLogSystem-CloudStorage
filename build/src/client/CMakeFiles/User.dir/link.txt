@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -rdynamic CMakeFiles/User.dir/TestUser.cpp.o -o ../../../bin/User  -levent -levent_pthreads -lpthread 

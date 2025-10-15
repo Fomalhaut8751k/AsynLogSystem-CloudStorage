@@ -8,37 +8,17 @@
 #include <algorithm>
 #include <iomanip>
 
+#include "Utils.hpp"
 #include "base64.h"
 
 class StorageClient {
 private:
     std::string server_url_;
-     
     
     // 执行 wget 命令并返回结果
     int ExecuteWget(const std::string& command) {
         std::cout << "Executing: " << command << std::endl;
         return system(command.c_str());
-    }
-    
-    // URL 编码（简单版本）
-    std::string UrlEncode(const std::string& value) {
-        std::ostringstream escaped;
-        escaped.fill('0');
-        escaped << std::hex;
-        
-        for (char c : value) {
-            // 保留字母数字和一些特殊字符
-            if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-                escaped << c;
-                continue;
-            }
-            
-            // 其他字符进行百分比编码
-            escaped << '%' << std::setw(2) << int((unsigned char)c);
-        }
-        
-        return escaped.str();
     }
     
 public:
@@ -54,13 +34,14 @@ public:
         std::string encoded_name = base64_encode(filename);
         
         // 构建 wget 命令
-        std::string command = "wget --post-file=\"" + file_path + "\" ";
+        // std::string command = "wget --post-file=\"" + file_path + "\" ";
+        std::string command = "wget --progress=bar:force --post-file=\"" + file_path + "\" ";
         command += "--header=\"FileName: " + encoded_name + "\" ";
         command += "--header=\"StorageType: " + storage_type + "\" ";
         command += "--header=\"Content-Type: application/octet-stream\" ";
         command += "-O /tmp/upload_response.txt ";  // 保存响应到临时文件
         command += "\"" + server_url_ + "/upload\" ";
-        command += "2>/dev/null";  // 隐藏错误输出
+        // command += "2>/dev/null";  // 隐藏错误输出
         
         int result = ExecuteWget(command);
         
@@ -85,22 +66,52 @@ public:
     // 下载文件 - 使用 wget
     bool Download(const std::string& filename, const std::string& save_path)
     {
-        std::string encoded_filename = UrlEncode(filename);
+        std::string encoded_filename = mystorage::UrlDecode(filename);
+        std::string save_path_ = save_path;
+
+        size_t last_slash = save_path_.find_last_of("/\\");
+
+        if(last_slash == std::string::npos)
+        {
+            // filename.xx or ""
+            if(save_path_ == "")
+            {
+                save_path_ += encoded_filename;
+            }
+        }
+        else if(last_slash == save_path_.length() - 1)
+        {
+            // directory/
+            mystorage::FileUtil createDir(save_path_.substr(0, last_slash));
+            createDir.CreateDirectory();
+            save_path_ += encoded_filename;
+        }
+        else if(last_slash == 1 && filename[0] == '.')
+        {
+            // ./filename.xx
+        }
+        else
+        {   
+            // .directory/filename.xx
+            mystorage::FileUtil createDir(save_path_.substr(0, last_slash));
+            createDir.CreateDirectory();
+        }
+
         
         std::string command = "wget --progress=bar:force ";
-        command += "-O \"" + save_path + "\" ";
+        command += "-O \"" + save_path_ + "\" ";
         command += "\"" + server_url_ + "/download/" + encoded_filename + "\"";
         
-        std::cout << "Downloading: " << filename << std::endl;
+        std::cout << "Download: " << filename << std::endl;
         int result = system(command.c_str());
         
         if (result == 0) {
             // 检查文件大小
-            std::ifstream file(save_path, std::ios::binary | std::ios::ate);
+            std::ifstream file(save_path_, std::ios::binary | std::ios::ate);
             if (file.is_open()) {
                 std::streamsize size = file.tellg();
                 file.close();
-                std::cout << "Successfully downloaded: " << save_path 
+                std::cout << "Successfully downloaded: " << save_path_ 
                         << " (" << size << " bytes)" << std::endl;
                 return true;
             } else {
@@ -111,8 +122,7 @@ public:
             std::cerr << "Download failed with exit code: " << result << std::endl;
             return false;
         }
-    }
-    
+    } 
     
     // 获取文件列表 - 使用 wget
     bool ListFiles() {
@@ -145,7 +155,6 @@ public:
             return false;
         }
     }
-
 
     // 删除某个文件
     bool Remove(const std::string& filename)

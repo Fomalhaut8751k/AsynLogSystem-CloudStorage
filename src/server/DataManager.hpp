@@ -122,7 +122,7 @@ namespace mystorage
                 }
                 
             }
-            mylog::GetLogger("default")->Log({"Initialize datamanager configuration success",  mylog::LogLevel::ERROR});
+            mylog::GetLogger("default")->Log({"Initialize datamanager configuration success",  mylog::LogLevel::INFO});
             return 0;
         }
         

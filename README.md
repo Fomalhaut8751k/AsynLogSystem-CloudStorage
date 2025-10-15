@@ -220,3 +220,5 @@
     - 修复了服务器启动时无法显示先前上传的文件列表
 
         ![](img/interface.png)
+
+    - 添加了删除文件功能，同时从`table_`和`storage.data`中删除对应的`StorageInfo`

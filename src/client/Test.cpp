@@ -8,6 +8,7 @@ int main(int argc, char* argv[])
         std::cout << "  upload <file_path>" << std::endl;
         std::cout << "  download <filename> <save_path>" << std::endl;
         std::cout << "  list" << std::endl;
+        std::cout << "  remove <filename>" << std::endl;
         return 1;
     }
     
@@ -22,7 +23,7 @@ int main(int argc, char* argv[])
     {
         if(argc ==3)  // 没有指定保存路径，就下载在当前路径
         {
-            client.Download(argv[2], "./" + std::string(argv[2]));
+            client.Download(argv[2], "");
         }
         else
         {
