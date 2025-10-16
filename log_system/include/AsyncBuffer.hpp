@@ -7,13 +7,21 @@
 
 #include "Message.hpp"
 
-#define UNIT_SPACE 1024
+#define UNIT_SPACE 400
 
 namespace mylog
 {
     // 异步缓冲区模块
     class AsyncBuffer
     {
+    protected:
+        std::vector<char> buffer_;  // 缓冲区
+        unsigned int buffer_size_;   // 缓冲区长度
+        unsigned int buffer_pos_;    // 可写入位置的起点
+
+        std::mutex BufferWriteMutex_;
+        std::condition_variable cv_;
+
     public:
         AsyncBuffer()
         {
@@ -23,6 +31,9 @@ namespace mylog
         }
 
         ~AsyncBuffer() = default;
+
+        // 获取缓冲区可用空间大小
+        unsigned int getAvailable() { return UNIT_SPACE - buffer_pos_; }
 
         // 将用户的日志信息写入:
         void write(const char* message_unformatted, unsigned int length)
@@ -37,11 +48,11 @@ namespace mylog
             */
             std::unique_lock<std::mutex> lock(BufferWriteMutex_);
 
-            if(UNIT_SPACE - buffer_pos_  < length)
-            {
-                std::cerr << "空间不足" << std::endl;
-                return;  // 先丢掉，等待之后实现
-            }
+            // if(UNIT_SPACE - buffer_pos_  < length)
+            // {
+            //     std::cerr << "空间不足: " << UNIT_SPACE << " " << buffer_pos_ << " " << length << std::endl;
+            //     return;  // 先丢掉，等待之后实现
+            // }
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
         }
@@ -66,14 +77,6 @@ namespace mylog
             buffer_.assign(1024, '\0');  // 清空缓冲区的数据
             buffer_pos_ = 0;
         }
-
-        
-    protected:
-        std::vector<char> buffer_;  // 缓冲区
-        unsigned int buffer_size_;   // 缓冲区长度
-        unsigned int buffer_pos_;    // 可写入位置的起点
-
-        std::mutex BufferWriteMutex_;
     };
 }
 

@@ -14,7 +14,6 @@
 #include <fstream>
 
 
-
 // 将接受到的数据写到生产的buffer中
 void read_log_callback(struct bufferevent *, void*);
 

@@ -2,9 +2,6 @@
 #include "Service.hpp"
 #include "Utils.hpp"
 
-// #include "../../../log_system/include/Manager.hpp"
-// #include "../log_system/include/Manager.hpp"
-
 mystorage::DataManager* data_;
 
 int main()

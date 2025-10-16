@@ -77,11 +77,6 @@ public:
 
     bool start()
     {
-        // 判断服务器是否连接成功
-        returnConnectLabel = std::make_shared<std::packaged_task<bool(bool)>>([](bool label) -> bool { return label; });
-        // 判断事件循环是否结束
-        returnEventLoopExit = std::make_shared<std::packaged_task<bool()>>([]() -> bool {  return true; });
-       
         // 为 Libevent 启用 POSIX 线程（pthreads）支持
         evthread_use_pthreads();
         base_ = event_base_new();
@@ -103,24 +98,13 @@ public:
             event_base_free(base_);
             exit(-1);
         }
-
-        // // 创建一个持久性的超时事件
-        // ev_ = event_new(base_, -1, EV_TIMEOUT | EV_PERSIST, [](int, short, void *)->void{ }, NULL);
-
-        // // 加入事件循环
-        // event_add(ev_, &tv);
-
         
-        bufferevent_setcb(bev_, read_callback, NULL, event_callback, (void*)returnConnectLabel.get());
+        bufferevent_setcb(bev_, read_callback, NULL, NULL, NULL);
         int ret = bufferevent_enable(bev_, EV_READ | EV_WRITE);
         if(ret < 0)
         {
             return false;
         }
-
-        // 运行事件循环
-        std::thread t1(event_loop_start, base_, returnEventLoopExit.get());
-        t1.detach();
 
         // 尝试连接服务器
         ret = bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
@@ -129,12 +113,8 @@ public:
             return false;
         }
 
-        // 判断服务器是否连接成功 
-        ret = returnConnectLabel->get_future().get();
-        if(ret == false)
-        {
-            return false;
-        } 
+        std::thread loop(event_base_dispatch, base_);
+        loop.detach();
         
         Connecting_ = true;
         return true;
@@ -152,9 +132,6 @@ public:
         {
             std::cerr << "event loop exit failed!" << std::endl;
         }
-
-        // 等待事件循环结束
-        returnEventLoopExit->get_future();
 
         bufferevent_free(bev_);
         event_base_free(base_);
@@ -175,43 +152,6 @@ void read_callback(struct bufferevent* bev, void* ctx) {
         std::cout << "服务器回复: " << buffer;
         std::cout.flush();
     }
-}
-
-// 事件回调函数
-void event_callback(struct bufferevent* bev, short events, void* ctx) 
-{
-    auto returnConnectLabel = static_cast<std::packaged_task<bool(bool)>*>(ctx);
-    bool label = false;
-    
-    if (events & BEV_EVENT_CONNECTED) {
-        // std::cout << "成功连接到服务器 " << std::endl;
-        label = true;
-    } 
-    else if (events & BEV_EVENT_ERROR) {
-        // std::cerr << "连接错误: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()) << std::endl;
-    } 
-    else if (events & BEV_EVENT_EOF) {
-        // std::cout << "服务器断开连接" << std::endl;
-    }
-    // 把连接服务器是否成功的标志返回
-    (*returnConnectLabel)(label);
-}
-
-// 启动事件循环
-void event_loop_start(struct event_base* base, std::packaged_task<bool()>* returnEventLoopExit)
-{
-    // std::cerr << "event loop start" << std::endl
-
-    int active = event_base_get_num_events(base, EVENT_BASE_COUNT_ACTIVE);
-    int added = event_base_get_num_events(base, EVENT_BASE_COUNT_ADDED);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    int ret = event_base_dispatch(base);
-    
-    // std::cerr << "event loop exit" << std::endl;
-
-    (*returnEventLoopExit)();
 }
 
 #endif
