@@ -378,8 +378,6 @@ namespace mystorage
             std::string resource_path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
             resource_path = UrlDecode(resource_path);
 
-            std::cerr << "resource_path: " << resource_path << std::endl;
-
             // 根据resource_path在tabel_中搜索对应的StorageInfo
             data_->GetOneByURL(resource_path, &info);
             /*

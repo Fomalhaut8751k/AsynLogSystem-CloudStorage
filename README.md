@@ -203,6 +203,7 @@
 
     - 完成了云存储的基本功能
 
+<br>
 
 10. 2025.10.13
 
@@ -219,6 +220,113 @@
     - 实现了两台服务器(ubuntu server)在终端下载文件，同时，通过访问浏览器，window端也可以在可视化界面上上传和下载文件
     - 修复了服务器启动时无法显示先前上传的文件列表
 
-        ![](img/interface.png)
+        ![](img/system_interface.png)
 
     - 添加了删除文件功能，同时从`table_`和`storage.data`中删除对应的`StorageInfo`
+
+
+<br>
+
+11. 2025.10.16
+
+  - 问题1
+
+    使用gdb调试，发现系统启动时会创建17个线程，然后立刻结束16个线程的问题，如图所示，这其中的16个线程来自线程池。
+
+    调试发现，系统启动会创建17个线程，然后立刻结束16个线程的问题，如图所示，这其中的16个线程来自线程池。对于异步日志系统的Client(检测到ERROR或者FATAL日志就向远程服务器发送日志信息)，它通过`libevent`来实现其功能，期间会启动一个事件循环，会阻塞住当前线程，因此事件循环被放在了一个分离线程中，导致线程池启动的时候创建了两倍于初始线程数量的线程。初始线程数量为8，因此会一口气创建16个线程。
+    ![](img/thread_problem.png)
+
+    查阅代码发现，客户端的启动函数中，先启动了事件循环，再连接服务器，这里顺序有误，导致启动事件循环时没有激活的事件而直接结束，事件循环的结束又导致了`Client->start()`的失败将顺序掉转后，即先连接服务器，再启动事件循环，问题便得以解决，没有线程意外结束。
+    
+
+    ![](img/thread_normal.png)
+    正确的逻辑，先连接服务器后再启动事件循环，调试结果如下：红色方框是线程池创建的8个线程，并且没有异常的线程结束问题。
+
+- 问题2
+    
+    设定上，日志系统会把`ERROR`级别及以上的日志发送的远程服务器，目前既不是远程(只是127.0.0.1)，也接收不到日志消息(之前单独测试日志系统时可以)，其中，接收不到消息的原因是之前通过`future`确保服务器连接的操作完成后再启动事件循环，即尝试连接服务器的动作会触发事件的回调函数，在事件的回调函数中判断服务器连接完成后，再返回值来结束主线程的阻塞(等待返回值)。
+    ```cpp
+    void event_callback(struct bufferevent* bev, short events, void* ctx) 
+    {
+        auto returnConnectLabel = static_cast<std::packaged_task<bool(bool)>*>(ctx);
+        bool label = false;
+        
+        if (events & BEV_EVENT_CONNECTED) {
+            // std::cout << "成功连接到服务器 " << std::endl;
+            label = true;
+        } 
+        else if (events & BEV_EVENT_ERROR) {
+            // std::cerr << "连接错误: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()) << std::endl;
+        } 
+        else if (events & BEV_EVENT_EOF) {
+            // std::cout << "服务器断开连接" << std::endl;
+        }
+        // 把连接服务器是否成功的标志返回
+        (*returnConnectLabel)(label);
+    }
+    ```
+    但是逻辑顺序改正以后，经过调试发现，因为事件循环在连接服务器后才启动，因此连接服务器的这个动作并不会触发事件循环，从而不会调用到`event_callback()`，`(*returnConnectLabel)(label);`执行不到，因此主线程一直被阻塞着，`client->start()`无法结束，从而不能进入线程函数中的循环。删除这个多此一举的操作便可。
+    如图所示，用户端尝试下载一个云端不存在的文件，存储系统就向日志系统提交一条`ERROR`级别的日志，日志系统就将该日志发送到“远程”服务器上。
+    
+    ![](img/normal_commit.png)
+
+
+<br>
+
+12. 2025.10.16
+
+- 启动系统的时候【偶尔】会出现"空间不足"的提示，它来自于异步日志系统的缓冲区，但启动阶段不应该有写入缓冲区的操作
+
+    ```cpp
+    void write(const char* message_unformatted, unsigned int length)
+    {
+        std::unique_lock<std::mutex> lock(BufferWriteMutex_);
+
+        if(UNIT_SPACE - buffer_pos_  < length)
+        {
+            std::cerr << "空间不足" << std::endl;
+            return; 
+        }
+        std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
+        buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
+    }
+    ```
+    ![](img/write_problem.png)
+
+    通过gdb调试发现是存储系统中的数据管理器`DataManager`初始化时的日志。实验中，云存储中的`low_storage`和`deep_storage`中一共有7个文件，但是从日志消息中我们可以看到，被完整记录的日志数量只有4个。
+    ```cpp
+    [Wed Oct 15 15:47:38 2025] [INFO] load storage data from ./storage.data
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo start
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo success   // 1
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo start
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo success   // 2
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo start
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo success   // 3
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo start
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo success   // 4
+    [Wed Oct 15 15:47:38 2025] [INFO] Insert storageinfo start
+    [Wed Oct 15 15:47:38 2025] [INFO] Power up storage server
+    ```
+    由于没有实现空前不足时的等待操作，故这些日志信息会直接被舍弃掉。一个简单粗暴的方法：把`buffer`的上限从`1024`拉到`4096`
+
+    解决方法：通过线程的同步通信，在对外提供的写入接口中，写入之前先进行判断，如果空间不足就释放互斥锁，当生产者完成与消费者缓冲区之间的交换时，此时肯定是空的，就发通知可以写入了。这里我们将缓冲区的大小降到512，以更加频繁的触发写入时空间不足的情况，结果表明，即使出现了暂时空间不足的情况，但日志系统依然能够记录存储中10个文件的全部插入日志。
+    ```cpp
+    // 对外提供一个写入的接口
+    void readFromUser(std::string message, unsigned int buffer_length)
+    {
+        const char* buffer = message.c_str();
+        std::unique_lock<std::mutex> lock(Mutex_);
+        {
+            // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
+            cond_writable_.wait(lock, [&]()->bool{ 
+                return buffer_productor_->getAvailable() < buffer_length;
+            });
+
+            buffer_productor_->write(buffer, buffer_length);
+
+            label_data_ready_ = true;
+            cond_productor_.notify_all();
+        } 
+    }
+    ```
+    ![](img/space_avaiable.png)

@@ -31,6 +31,8 @@ namespace mylog
         std::condition_variable cond_productor_;  // 用于生产者的同步通信
         std::condition_variable cond_consumer_;   // 用于消费者的同步通信
 
+        std::condition_variable cond_writable_;   // 用于生产者缓冲区不足时对写入操作的控制
+
         std::condition_variable cond_exit_;         // 用于等待生产者消费者都退出后再继续析构
 
         std::shared_ptr<AsyncBuffer> buffer_productor_;
@@ -118,6 +120,9 @@ namespace mylog
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
                     buffer_consumer_ = tmp_buffer_controler;
+
+                    // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
+                    cond_writable_.notify_all();
                     
                     label_consumer_ready_ = false;
                     
@@ -173,8 +178,12 @@ namespace mylog
 
             std::unique_lock<std::mutex> lock(Mutex_);
             {
+                // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
+                cond_writable_.wait(lock, [&]()->bool{ 
+                    return buffer_productor_->getAvailable() < buffer_length;
+                });
                 buffer_productor_->write(buffer, buffer_length);
-                // std::cerr << "read from user" << std::endl;
+
                 label_data_ready_ = true;
                 cond_productor_.notify_all();
             } 

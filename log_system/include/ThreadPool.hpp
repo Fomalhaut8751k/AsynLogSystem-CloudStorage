@@ -13,8 +13,8 @@
 // #include "AsyncLogger.hpp"  AsyncLogger.hpp中已经包含了ThreadPool.hpp
 #include "backlog/ClientBackupLog.hpp"
 
-#define INIT_THREADSIZE 8
-#define THREAD_SIZE_THRESHHOLD 8
+#define INIT_THREADSIZE 4
+#define THREAD_SIZE_THRESHHOLD 4
 #define LOGQUE_MAX_THRESHHOLD 4
 
 // class AbstractAsyncLogger;  // 但是只是申明了类的存在，其方法依然是未知的
@@ -104,7 +104,6 @@ namespace mylog
 
             // 日志信息
             tp_log log = "";
-            curThreadSize_ = 8;
 
             while(ThreadPoolRunning_ || logSize_)
             {
