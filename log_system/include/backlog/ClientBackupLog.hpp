@@ -108,21 +108,30 @@ public:
 
         // 尝试连接服务器
         ret = bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
-        if(ret < 0)
+        if(ret < 0)  // ret = 0 不代表连接成功
         {
             return false;
         }
 
-        std::thread loop(event_base_dispatch, base_);
-        loop.detach();
+        std::thread loop([&]()->void{ ret = event_base_dispatch(base_);});
+
+        loop.detach(); 
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        if(ret == 0)  // ret没有被更新还是0，说明事件循环正常启动
+        {
+            Connecting_ = true;
+            return true;
+        }
         
-        Connecting_ = true;
-        return true;
+        return false;
     }
 
-    void log_write(const std::string log_message)
+    int log_write(const std::string log_message)
     {
-        bufferevent_write(bev_, log_message.c_str(), log_message.length());
+        int ret = bufferevent_write(bev_, log_message.c_str(), log_message.length());
+        return ret;  // 数据成功放入了bev_的发送缓冲区，并非发送成功服务器接受到了
     }
 
     void stop()
