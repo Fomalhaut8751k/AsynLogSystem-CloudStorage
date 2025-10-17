@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -static -Wl,--warn-unresolved-symbols -Wl,--warn-once -rdynamic CMakeFiles/Client.dir/Test.cpp.o CMakeFiles/Client.dir/base64.cpp.o -o ../../../bin/Client  -static -lstdc++fs -levent 

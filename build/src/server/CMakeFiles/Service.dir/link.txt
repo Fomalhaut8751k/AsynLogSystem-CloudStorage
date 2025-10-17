@@ -1,1 +1,0 @@
-/usr/bin/c++ -g -rdynamic CMakeFiles/Service.dir/Test.cpp.o CMakeFiles/Service.dir/base64.cpp.o -o ../../../bin/Service  -levent -levent_pthreads -lpthread -lstdc++fs -ljsoncpp -lbundle 
