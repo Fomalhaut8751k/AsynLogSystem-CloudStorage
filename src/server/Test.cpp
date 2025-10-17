@@ -14,12 +14,12 @@ int main()
     // 初始化启动日志系统并创建日志器
     mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
 
-    std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
-    Glb->BuildLoggerName("asynclogger");
-    Glb->BuildLoggerFlush<mylog::ConsoleFlush>("", 0);
-    Glb->BuildLoggerThreadPool(threadpool_.get());
-    mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));
-    mylog::AsyncLogger::n_ptr ptr = mylog::LoggerManager::GetInstance().GetLogger("asynclogger").get();
+    // std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
+    // Glb->BuildLoggerName("asynclogger");
+    // Glb->BuildLoggerFlush<mylog::ConsoleFlush>("", 0);
+    // Glb->BuildLoggerThreadPool(threadpool_.get());
+    // mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));
+    // mylog::AsyncLogger::n_ptr ptr = mylog::LoggerManager::GetInstance().GetLogger("asynclogger").get();
 
     // 初始化并启动存储服务器 
     data_ = new mystorage::DataManager();

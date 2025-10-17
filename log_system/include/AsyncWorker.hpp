@@ -84,12 +84,8 @@ namespace mylog
         void start()
         {   
             std::thread productorThread(std::bind(&AsyncWorker::productorTask, this));
-            // std::cerr << "productor is ready!" << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
+            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
             std::thread consumerThread(std::bind(&AsyncWorker::consumerTask, this));
-            // std::cerr << "consumer is ready!" << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
 
             productorThread.detach();
             consumerThread.detach();
@@ -120,15 +116,14 @@ namespace mylog
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
                     buffer_consumer_ = tmp_buffer_controler;
-
-                    // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
-                    cond_writable_.notify_all();
-                    
+ 
                     label_consumer_ready_ = false;
-                    
                     label_data_ready_ = false;
+
                     // 此时消费者的buffer就有了数据
                     cond_consumer_.notify_all();
+                    // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
+                    cond_writable_.notify_all();
                 }
                 else  // 如果醒来发现buffer没有消息，就重新循环，此时
                     // 消费者没有被生产者notify_all()还是等待，不会抢互斥锁
@@ -163,10 +158,6 @@ namespace mylog
                     // 把日志消息发送到指定的位置
                     log_func_(message_formatted);  
                 }
-
-                // // 假设消费者处理数据有时间
-                // std::this_thread::sleep_for(std::chrono::seconds(1));
-
                 buffer_consumer_->clear();
             }
         }
@@ -179,13 +170,25 @@ namespace mylog
             std::unique_lock<std::mutex> lock(Mutex_);
             {
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
-                cond_writable_.wait(lock, [&]()->bool{ 
-                    return buffer_productor_->getAvailable() > buffer_length;
-                });
-                buffer_productor_->write(buffer, buffer_length);
+                std::cerr << "生产者可用空间: " << buffer_productor_->getAvailable() << \
+                        ", 消费者可用空间: " << buffer_consumer_->getAvailable() << \
+                        ", 当期日志长度: " << buffer_length << std::endl;
 
-                label_data_ready_ = true;
-                cond_productor_.notify_all();
+                cond_writable_.wait(lock, [&]()->bool{ 
+                    // return buffer_productor_->getAvailable() > buffer_length;
+                    if(buffer_productor_->getAvailable() > buffer_length)
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                });
+                buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+
+                label_data_ready_ = true;  // 设置标志
+                cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了
             } 
         }
     };
