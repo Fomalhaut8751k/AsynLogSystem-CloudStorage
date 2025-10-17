@@ -180,7 +180,7 @@ namespace mylog
             {
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
                 cond_writable_.wait(lock, [&]()->bool{ 
-                    return buffer_productor_->getAvailable() < buffer_length;
+                    return buffer_productor_->getAvailable() > buffer_length;
                 });
                 buffer_productor_->write(buffer, buffer_length);
 

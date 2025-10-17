@@ -25,7 +25,7 @@ namespace mylog
     public:
         AsyncBuffer()
         {
-            buffer_.resize(1024, '\0');  // 预留1024大小的空间
+            buffer_.resize(UNIT_SPACE, '\0');  // 预留1024大小的空间
             buffer_size_ = UNIT_SPACE;
             buffer_pos_ = 0;
         }
@@ -47,12 +47,7 @@ namespace mylog
                 如果一个用户将要写入数据，发现缓冲区不够写了，就等待？
             */
             std::unique_lock<std::mutex> lock(BufferWriteMutex_);
-
-            // if(UNIT_SPACE - buffer_pos_  < length)
-            // {
-            //     std::cerr << "空间不足: " << UNIT_SPACE << " " << buffer_pos_ << " " << length << std::endl;
-            //     return;  // 先丢掉，等待之后实现
-            // }
+            
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
         }
@@ -74,7 +69,7 @@ namespace mylog
         // 清空缓冲区的消息
         void clear()
         {
-            buffer_.assign(1024, '\0');  // 清空缓冲区的数据
+            buffer_.assign(UNIT_SPACE, '\0');  // 清空缓冲区的数据
             buffer_pos_ = 0;
         }
     };
