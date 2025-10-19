@@ -148,7 +148,8 @@ namespace mylog
     public:    
         ThreadPool()
         { 
-
+            // 为 Libevent 启用 POSIX 线程（pthreads）支持
+            evthread_use_pthreads();  
         }
 
         ~ThreadPool()   

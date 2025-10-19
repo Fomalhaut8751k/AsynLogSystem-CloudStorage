@@ -103,20 +103,18 @@ namespace mylog
                 );
                 if(ExitLabel_)
                 {
-                    // std::cerr << "producer thread exit" << std::endl;
                     ExitProductorLabel_ = true;
                     cond_exit_.notify_all();
                     return;
                 }
 
-                if(!buffer_productor_->read().empty())
+                if(!buffer_productor_->getEmpty())
                 {
-                    // std::cerr << "Producer has received information!" << std::endl;
-                    // 交换生产者和消费者的变量
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
                     buffer_consumer_ = tmp_buffer_controler;
- 
+
+                    
                     label_consumer_ready_ = false;
                     label_data_ready_ = false;
 
@@ -139,26 +137,27 @@ namespace mylog
             while(!ExitLabel_)
             {
                 std::unique_lock<std::mutex> lock(Mutex_);
-                label_consumer_ready_ = true;
+                // label_consumer_ready_ = true;
                 cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
                 // 只要生产者一声令下，消费者就干活
                 cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
                 if(ExitLabel_)
                 {
-                    // std::cerr << "consumer thread exit" << std::endl;
                     ExitConsumerLabel_ = true;
                     cond_exit_.notify_all();
                     return;
                 }
 
                 label_consumer_ready_ = false;
-
+                
                 for(std::string message_formatted: buffer_consumer_->read())
                 {
                     // 把日志消息发送到指定的位置
                     log_func_(message_formatted);  
                 }
                 buffer_consumer_->clear();
+                // 逻辑上的调整,移动到此处
+                label_consumer_ready_ = true;
             }
         }
 
@@ -170,20 +169,8 @@ namespace mylog
             std::unique_lock<std::mutex> lock(Mutex_);
             {
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
-                std::cerr << "生产者可用空间: " << buffer_productor_->getAvailable() << \
-                        ", 消费者可用空间: " << buffer_consumer_->getAvailable() << \
-                        ", 当期日志长度: " << buffer_length << std::endl;
-
                 cond_writable_.wait(lock, [&]()->bool{ 
-                    // return buffer_productor_->getAvailable() > buffer_length;
-                    if(buffer_productor_->getAvailable() > buffer_length)
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        return false;
-                    }
+                    return buffer_productor_->getAvailable() > buffer_length;
                 });
                 buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
 

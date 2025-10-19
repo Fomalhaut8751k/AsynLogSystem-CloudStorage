@@ -7,7 +7,7 @@
 
 #include "Message.hpp"
 
-#define UNIT_SPACE 400
+#define UNIT_SPACE 20
 
 namespace mylog
 {
@@ -34,6 +34,9 @@ namespace mylog
 
         // 获取缓冲区可用空间大小
         unsigned int getAvailable() { return UNIT_SPACE - buffer_pos_; }
+
+        // 判断缓冲区是否为空
+        bool getEmpty() const { return buffer_pos_ == 0; }
 
         // 将用户的日志信息写入:
         void write(const char* message_unformatted, unsigned int length)
