@@ -61,6 +61,8 @@ private:
     std::shared_ptr<std::packaged_task<bool()>> returnEventLoopExit;
 
 public:
+    // static std::atomic_int init_evthread_;
+
     Client(const std::string addr, unsigned int port, unsigned int threadid)
     {
         log_message_ = "";
@@ -77,8 +79,6 @@ public:
 
     bool start()
     {
-        // 为 Libevent 启用 POSIX 线程（pthreads）支持
-        evthread_use_pthreads();
         base_ = event_base_new();
         if(NULL == base_)
         {
@@ -146,6 +146,8 @@ public:
         event_base_free(base_);
     }
 };
+
+// std::atomic_int Client::init_evthread_ = 0;
 
 
 // 读取服务器回复的回调函数
