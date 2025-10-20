@@ -10,14 +10,9 @@
 #include <functional>
 #include <queue>
 
-// #include "AsyncLogger.hpp"  AsyncLogger.hpp中已经包含了ThreadPool.hpp
 #include "backlog/ClientBackupLog.hpp"
+#include "LogSystemConfig.hpp"
 
-#define INIT_THREADSIZE 4
-#define THREAD_SIZE_THRESHHOLD 4
-#define LOGQUE_MAX_THRESHHOLD 4
-
-// class AbstractAsyncLogger;  // 但是只是申明了类的存在，其方法依然是未知的
 
 namespace mylog
 {
@@ -154,8 +149,6 @@ namespace mylog
 
         ~ThreadPool()   
         {
-            // std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl;
-            // std::cerr << "~ThreadPool()" << std::endl;
             // 线程池析构的时候要把所有事件循环关闭
             std::unique_lock<std::mutex> lock(logQueMtx_);
             ThreadPoolRunning_ = false;
@@ -163,44 +156,21 @@ namespace mylog
             notEmpty_.notify_all();  
             // 等待所有线程关闭，可能在这里会被通知4次
             Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
-
-            // std::cout << "~ThreadPool() finish" << std::endl;
-            // std::this_thread::sleep_for(std::chrono::seconds(5));
         }
 
-        void setup(std::string server_addr, 
-                unsigned int server_port,
-                // Ptr ptr = nullptr,
-                tp_uint initThreadSize = INIT_THREADSIZE,
-                tp_uint threadSizeThreshHold =  THREAD_SIZE_THRESHHOLD
-        )
+        void setup(std::string server_addr,  unsigned int server_port)
         {
             serverAddr_ = server_addr;
             serverPort_ = server_port;
-
-            initThreadSize_ = initThreadSize;
+            
             curThreadSize_ = 0;
-            threadSizeThreshHold_ = threadSizeThreshHold;
-
             logSize_ = 0;
-            logQueMaxThreshHold_ = LOGQUE_MAX_THRESHHOLD;
+
+            initThreadSize_ = mylog::Config::GetInstance().GetInitThreadSize();
+            threadSizeThreshHold_ = mylog::Config::GetInstance().GetThreadSizeThreshhold();
+            logQueMaxThreshHold_ = mylog::Config::GetInstance().GetLogQueMaxThreshhold();
 
             ThreadPoolRunning_ = true;  // 表示线程池正在运行中
-
-            // if(ptr)
-            // {
-            //     // 把初始化配置发送给异步日志系统
-            //     std::string config_log = "";
-            //     config_log += "Initialize threadpool configuration:";
-            //     config_log += "\nTHREAD:";
-            //     config_log += ("\n  init_thread_size: " + std::to_string(initThreadSize_));
-            //     config_log += ("\n  active_thread_number: " + std::to_string(curThreadSize_));
-            //     config_log += ("\n  thread_size_threshhold: " + std::to_string(threadSizeThreshHold_));
-            //     config_log += "\nLOG: ";
-            //     config_log += ("\n  log_queue_threshhold_: " + std::to_string(logQueMaxThreshHold_));
-
-            //     ptr->Log({config_log, mylog::LogLevel::INFO});
-            // }
         }
 
         void startup()

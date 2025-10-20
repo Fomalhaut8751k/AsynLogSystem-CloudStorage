@@ -3,6 +3,7 @@
 
 #include "Manager.hpp"
 #include "Level.hpp"
+#include "LogSystemConfig.hpp"
 
 namespace mylog
 {

@@ -3,7 +3,7 @@
 #include "Level.hpp"
 #include <string>
 #include <ctime>
-#include "Util.hpp"
+#include "LogSystemUtils.hpp"
 
 namespace mylog{
 

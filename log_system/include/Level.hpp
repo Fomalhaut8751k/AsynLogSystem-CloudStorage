@@ -4,7 +4,7 @@
 namespace mylog
 {
     // 日志级别枚举
-    enum class LogLevel
+    enum class LogLevel : int
     {
         DEBUG = 1,    // 调试
         INFO,         // 信息

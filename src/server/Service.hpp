@@ -1,24 +1,9 @@
 #ifndef SERVICE_H
 #define SERVICE_H
 
-// #include "Config.hpp"
-// #include "Utils.hpp"
-
-// #include <stdio.h>
 #include <event.h>
-// #include <stdlib.h>
-// #include <sys/socket.h>
-// #include <netinet/in.h>
-// #include <arpa/inet.h>
-// #include <string.h>
 #include <event2/listener.h>
-// #include <iostream>
-// #include <thread>
-// #include <iostream>
-// #include <memory>
-// #include <thread>
 
-// #include "../../../log_system/include/AsyncLogger.hpp"
 #include <sys/queue.h>
 #include <event.h>
 
@@ -31,9 +16,9 @@
 #include <regex>
 
 #include "base64.h"
-#include "DataManager.hpp"
+#include "StorageDataManager.hpp"
 
-extern mystorage::DataManager* data_;
+extern mystorage::DataManager* storage_data_;
 
 namespace mystorage
 {
@@ -192,7 +177,7 @@ namespace mystorage
             // 上传之后就要添加对应的StorageInfo信息
             StorageInfo info;
             info.NewStorageInfo(storage_path);
-            data_->Insert(info);
+            storage_data_->Insert(info);
 
             struct evbuffer* output_buf = evhttp_request_get_output_buffer(req);
             std::string json_response = "{\"status\":\"success\",\"message\":\"File uploaded successfully\",\"filename\":\"" + filename + "\"}\n";
@@ -274,7 +259,7 @@ namespace mystorage
             
             // 获取所有的StorageInfo, 都存放在DataManager的table_中
             std::vector<StorageInfo> arry;
-            if(data_->GetAll(&arry) == -1)
+            if(storage_data_->GetAll(&arry) == -1)
             {
                 mylog::GetLogger("default")->Log({"ListShow() fail when load storageinfo", mylog::LogLevel::ERROR});
             }
@@ -319,7 +304,7 @@ namespace mystorage
     
             // 获取所有的StorageInfo
             std::vector<StorageInfo> arry;
-            if(data_->GetAll(&arry) == -1)
+            if(storage_data_->GetAll(&arry) == -1)
             {
                 mylog::GetLogger("default")->Log({"ClientListFiles() fail when load storageinfo", mylog::LogLevel::ERROR});
                 // 返回错误响应
@@ -379,7 +364,7 @@ namespace mystorage
             resource_path = UrlDecode(resource_path);
 
             // 根据resource_path在tabel_中搜索对应的StorageInfo
-            data_->GetOneByURL(resource_path, &info);
+            storage_data_->GetOneByURL(resource_path, &info);
             /*
                 info.url_: /download/pcre-8.45.zip                文件将下载到客户端的这个位置?
                 info.storageinfo_: ./low_storage/pcre-8.45.zip    文件存储在服务器的这个位置
@@ -502,7 +487,7 @@ namespace mystorage
             mylog::GetLogger("default")->Log({"The file: " + filename + " will be remove", mylog::LogLevel::INFO});
 
             mystorage::StorageInfo info;
-            if(data_->GetOneByURL("/download/" + filename, &info) == -1)
+            if(storage_data_->GetOneByURL("/download/" + filename, &info) == -1)
             {
                 mylog::GetLogger("default")->Log({"file is not exist", mylog::LogLevel::WARN});
                 evhttp_send_reply(req, HTTP_OK, "0", NULL);
@@ -512,7 +497,7 @@ namespace mystorage
             // 删除文件
             remove(info.storage_path_.c_str());
             // 从table_中删除对应的storageinfo并更新
-            data_->Erase(info.url_);
+            storage_data_->Erase(info.url_);
             // evhttp_send_reply(req, HTTP_OK, "0", NULL);
 
             struct evbuffer* output_buf = evhttp_request_get_output_buffer(req);
