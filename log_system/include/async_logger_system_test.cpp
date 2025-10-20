@@ -1,7 +1,4 @@
-// #include "AsyncLogger.hpp"
 #include "MyLog.hpp"
-// #include "ThreadPool.hpp"
-
 #include <iostream>
 #include <thread>
 #include <vector>

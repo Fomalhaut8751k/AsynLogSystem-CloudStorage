@@ -2,7 +2,7 @@
 #define LOGFLUSH_H
 
 #include "Level.hpp"
-#include "Util.hpp"
+#include "LogSystemUtils.hpp"
 #include "Message.hpp"
 #include <iostream>
 #include <string>

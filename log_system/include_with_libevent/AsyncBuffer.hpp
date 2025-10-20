@@ -16,7 +16,7 @@ namespace mylog
         AsyncBuffer()
         {
             buffer_.resize(1024, '\0');  // 预留1024大小的空间
-            buffer_size_ = UNIT_SPACE;
+            buffer_size_ = INIT_BUFFER_SIZE;
             buffer_pos_ = 0;
         }
 
@@ -35,7 +35,7 @@ namespace mylog
             */
             std::unique_lock<std::mutex> lock(BufferWriteMutex_);
 
-            if(UNIT_SPACE - buffer_pos_  < length)
+            if(INIT_BUFFER_SIZE - buffer_pos_  < length)
             {
                 std::cerr << "空间不足" << std::endl;
                 return;  // 先丢掉，等待之后实现

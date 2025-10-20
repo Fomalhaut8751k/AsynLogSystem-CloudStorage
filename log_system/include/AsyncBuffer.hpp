@@ -6,8 +6,8 @@
 #include <string>
 
 #include "Message.hpp"
+#include "LogSystemConfig.hpp"
 
-#define UNIT_SPACE 20
 
 namespace mylog
 {
@@ -19,24 +19,50 @@ namespace mylog
         unsigned int buffer_size_;   // 缓冲区长度
         unsigned int buffer_pos_;    // 可写入位置的起点
 
+        unsigned int init_buffer_size_;   // 初始的缓冲区大小
+
         std::mutex BufferWriteMutex_;
         std::condition_variable cv_;
 
     public:
         AsyncBuffer()
         {
-            buffer_.resize(UNIT_SPACE, '\0');  // 预留1024大小的空间
-            buffer_size_ = UNIT_SPACE;
+            init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();
+            buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
+            buffer_size_ = init_buffer_size_;
             buffer_pos_ = 0;
         }
 
         ~AsyncBuffer() = default;
 
         // 获取缓冲区可用空间大小
-        unsigned int getAvailable() { return UNIT_SPACE - buffer_pos_; }
+        unsigned int getAvailable() const { return buffer_size_- buffer_pos_; }
+
+        // 获取缓冲区总的空间大小
+        unsigned int getSize() const { return buffer_size_; }
+
+        // 判断使用的缓冲区大小是否大于初始大小，用于扩容下的判断
+        bool getIdleExpansionSpace() const { return buffer_pos_ < init_buffer_size_; }
 
         // 判断缓冲区是否为空
         bool getEmpty() const { return buffer_pos_ == 0; }
+
+        // 扩容
+        int scaleUp(unsigned expand_size)
+        {
+            if(expand_size <= 0) { return -1; }
+            buffer_.resize(buffer_size_ + expand_size, '\0');
+            buffer_size_ += expand_size;
+            return 0;
+        }
+
+        // 缩容
+        int scaleDown()
+        {
+            buffer_.resize(init_buffer_size_);   // 回到初始大小
+            buffer_size_ = init_buffer_size_;
+            return 0;
+        }
 
         // 将用户的日志信息写入:
         void write(const char* message_unformatted, unsigned int length)
@@ -72,7 +98,7 @@ namespace mylog
         // 清空缓冲区的消息
         void clear()
         {
-            buffer_.assign(UNIT_SPACE, '\0');  // 清空缓冲区的数据
+            buffer_.assign(buffer_size_, '\0');  // 清空缓冲区的数据
             buffer_pos_ = 0;
         }
     };

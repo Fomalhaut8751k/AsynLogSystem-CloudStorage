@@ -7,7 +7,7 @@
     肯定有个函数，接受组织好的日志作为参数
 */
 #include "AsyncWorker.hpp"
-#include "Util.hpp"
+#include "LogSystemUtils.hpp"
 #include "Flush.hpp"
 #include "backlog/ClientBackupLog.hpp"
 #include "ThreadPool.hpp"

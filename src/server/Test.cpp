@@ -1,11 +1,15 @@
 #include <iostream>
 #include "Service.hpp"
-#include "Utils.hpp"
+#include "StorageUtils.hpp"
 
-mystorage::DataManager* data_;
+mystorage::DataManager* storage_data_;
+
 
 int main()
-{
+{   
+    std::pair<std::string, mylog::LogLevel> log_system_config_message 
+                = mylog::Config::GetInstance().ReadConfig();
+
     // 初始化并启动线程池 
     std::unique_ptr<mylog::ThreadPool> threadpool_ = std::make_unique<mylog::ThreadPool>();
     threadpool_->setup("127.0.0.1", 8000);
@@ -13,6 +17,7 @@ int main()
 
     // 初始化启动日志系统并创建日志器
     mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
+    mylog::GetLogger("default")->Log(log_system_config_message);
 
     // std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
     // Glb->BuildLoggerName("asynclogger");
@@ -22,7 +27,11 @@ int main()
     // mylog::AsyncLogger::n_ptr ptr = mylog::LoggerManager::GetInstance().GetLogger("asynclogger").get();
 
     // 初始化并启动存储服务器 
-    data_ = new mystorage::DataManager();
+
+    std::pair<std::string, mylog::LogLevel> storage_config_message = mystorage::Config::GetInstance().ReadConfig();
+    mylog::GetLogger("default")->Log(storage_config_message);
+
+    storage_data_ = new mystorage::DataManager();
 
     std::thread t1([]()->void{
         std::unique_ptr<mystorage::StorageServer> storage_server_  = std::make_unique<mystorage::StorageServer>();
@@ -31,8 +40,8 @@ int main()
     });
     
     t1.join();
-    
-    delete data_;
+
+    delete storage_data_;
 
     return 0;
 }

@@ -18,9 +18,16 @@
 #include "Flush.hpp"
 #include "Message.hpp"
 #include "MyLog.hpp"
+#include "LogSystemConfig.hpp"
 
 namespace mylog
 {
+    enum class ExpandMode
+    {
+        SOFTEXPANSION = 0,  // 日志大小大于缓冲区整个大小时，增加两倍该日志大小的容量
+        HARDEXPANSION       // 日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
+    };
+
     class AsyncWorker
     {
     private:
@@ -40,9 +47,12 @@ namespace mylog
 
         std::atomic_bool label_consumer_ready_;  // 给生产者判断消费者是否处在空闲状态
         std::atomic_bool label_data_ready_;      // 给生产者判断数据是否传入
-        std::atomic_bool label_producor_swap_;
+
+        int current_effective_expansion_times;   // 扩容后维持的次数
+        int effective_expansion_times;
 
         LOG_FUNC log_func_;
+        ExpandMode expand_mode_;
 
         bool ExitLabel_;
 
@@ -58,12 +68,15 @@ namespace mylog
 
             label_consumer_ready_(true),
             label_data_ready_(false),
-            label_producor_swap_(false)
+            current_effective_expansion_times(-1),
+            expand_mode_(ExpandMode::HARDEXPANSION)
 
         {
             ExitLabel_ = false;
             ExitProductorLabel_ = false;
             ExitConsumerLabel_ = false;
+
+            effective_expansion_times = mylog::Config::GetInstance().GetEffectiveExpansionTimes();
         }
 
         ~AsyncWorker()
@@ -84,7 +97,6 @@ namespace mylog
         void start()
         {   
             std::thread productorThread(std::bind(&AsyncWorker::productorTask, this));
-            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
             std::thread consumerThread(std::bind(&AsyncWorker::consumerTask, this));
 
             productorThread.detach();
@@ -108,12 +120,26 @@ namespace mylog
                     return;
                 }
 
+                // std::cerr << "即将发生交换, effect_expansion_times: " << effective_expansion_times << std::endl;
+
+                // 交换前对扩容计数的处理，此时可以判断扩容的部分是否被使用到
+                if(current_effective_expansion_times > 0)   // 当前是扩容状态
+                {   // 如果扩容的部分没有被使用到
+                    if(buffer_productor_->getIdleExpansionSpace()) 
+                    {   // 计数减一
+                        current_effective_expansion_times--;
+                    }
+                    else  // 如果使用到了
+                    {   // 刷新计数
+                        current_effective_expansion_times = effective_expansion_times;
+                    }
+                }
+
                 if(!buffer_productor_->getEmpty())
                 {
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
                     buffer_consumer_ = tmp_buffer_controler;
-
                     
                     label_consumer_ready_ = false;
                     label_data_ready_ = false;
@@ -127,6 +153,15 @@ namespace mylog
                     // 消费者没有被生产者notify_all()还是等待，不会抢互斥锁
                 {
                     label_data_ready_ = false;
+                }
+
+                // 交换后对扩容状态的处理
+                if(current_effective_expansion_times == 0)
+                {   // 表示异步工作者认为已经长时间没有使用到扩容的空间，应该释放掉
+                    buffer_productor_->scaleDown();  
+                    buffer_consumer_->scaleDown();  // 由于生产者判断了交换前的情况，因此消费者接手它的空间后不用担心缩容对数据的影响
+                    current_effective_expansion_times = - 1;
+                    // std::cerr << "扩容空间长时间未使用，已回到: " << buffer_productor_->getSize() << std::endl;
                 }
             }
             
@@ -165,12 +200,48 @@ namespace mylog
         void readFromUser(std::string message, unsigned int buffer_length)
         {
             const char* buffer = message.c_str();
-
+            // std::cerr << "当前日志大小: " << buffer_length << std::endl;
             std::unique_lock<std::mutex> lock(Mutex_);
             {
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
                 cond_writable_.wait(lock, [&]()->bool{ 
-                    return buffer_productor_->getAvailable() > buffer_length;
+                    // 软扩容，日志大小大于缓冲区整个大小时，增加两倍该日志大小的容量
+                    if(expand_mode_ == ExpandMode::SOFTEXPANSION)
+                    {   
+                        if(buffer_productor_->getSize() < buffer_length)
+                        {   // 扩容生产者和消费者的缓冲区
+                            buffer_productor_->scaleUp(2 * buffer_length);
+                            buffer_consumer_->scaleUp(2 * buffer_length);
+                            current_effective_expansion_times = effective_expansion_times;
+                            // std::cerr << "扩容到: " << buffer_productor_->getSize() << std::endl;
+                            return true;
+                        }
+                        else
+                        {
+                            return buffer_productor_->getAvailable() > buffer_length;
+                        }
+                    }
+                    // 硬扩容，日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
+                    else if(expand_mode_ == ExpandMode::HARDEXPANSION)
+                    {
+                        if(buffer_productor_->getAvailable() < buffer_length)
+                        {   // 扩容生产者和消费者的缓冲区
+                            buffer_productor_->scaleUp(2 * buffer_length);
+                            buffer_consumer_->scaleUp(2 * buffer_length);
+                            current_effective_expansion_times = effective_expansion_times;
+                            // std::cerr << "扩容到: " << buffer_productor_->getSize() << std::endl;
+                            return true;
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        perror("Invalid expansion method");
+                    }
+                    return true;    
                 });
                 buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
 
