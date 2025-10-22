@@ -59,6 +59,11 @@ namespace mylog
         bool ExitProductorLabel_;
         bool ExitConsumerLabel_;
 
+        // 测试功能
+        std::chrono::_V2::steady_clock::time_point start_time_;  
+        std::atomic_int cnt;
+        std::atomic_int pdc;
+
 
     public:
         AsyncWorker(LOG_FUNC log_func):
@@ -69,6 +74,9 @@ namespace mylog
             label_consumer_ready_(true),
             label_data_ready_(false),
             current_effective_expansion_times(-1),
+
+            start_time_(std::chrono::steady_clock::now()),
+
             expand_mode_(ExpandMode::HARDEXPANSION)
 
         {
@@ -77,6 +85,11 @@ namespace mylog
             ExitConsumerLabel_ = false;
 
             effective_expansion_times = mylog::Config::GetInstance().GetEffectiveExpansionTimes();
+
+            effective_expansion_times = 5;
+
+            pdc = 0;
+            cnt = 0;
         }
 
         ~AsyncWorker()
@@ -113,6 +126,15 @@ namespace mylog
                         return label_consumer_ready_ && label_data_ready_ || ExitLabel_;
                     }
                 );
+
+                // 从生产者开始处理第一条日志开始:
+                if(pdc == 0) 
+                {
+                    start_time_ = std::chrono::steady_clock::now();
+                    pdc = 1;
+                }
+                
+
                 if(ExitLabel_)
                 {
                     ExitProductorLabel_ = true;
@@ -188,8 +210,18 @@ namespace mylog
                 for(std::string message_formatted: buffer_consumer_->read())
                 {
                     // 把日志消息发送到指定的位置
+                    cnt++;
                     log_func_(message_formatted);  
                 }
+
+                // 如果处理完后发现事件大于1秒了就输出
+                if(pdc == 1 && std::chrono::steady_clock::now() - start_time_ > std::chrono::seconds(1))
+                {
+                    std::cerr << "1秒内处理了: " << cnt << " 条日志" << std::endl;
+                    pdc = 2;
+                }
+                // std::cerr << cnt << std::endl;
+
                 buffer_consumer_->clear();
                 // 逻辑上的调整,移动到此处
                 label_consumer_ready_ = true;
@@ -208,7 +240,7 @@ namespace mylog
                     // 软扩容，日志大小大于缓冲区整个大小时，增加两倍该日志大小的容量
                     if(expand_mode_ == ExpandMode::SOFTEXPANSION)
                     {   
-                        if(buffer_productor_->getSize() < buffer_length)
+                        if(buffer_productor_->getSize() <= buffer_length)
                         {   // 扩容生产者和消费者的缓冲区
                             buffer_productor_->scaleUp(2 * buffer_length);
                             buffer_consumer_->scaleUp(2 * buffer_length);
@@ -224,7 +256,7 @@ namespace mylog
                     // 硬扩容，日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
                     else if(expand_mode_ == ExpandMode::HARDEXPANSION)
                     {
-                        if(buffer_productor_->getAvailable() < buffer_length)
+                        if(buffer_productor_->getAvailable() <= buffer_length)
                         {   // 扩容生产者和消费者的缓冲区
                             buffer_productor_->scaleUp(2 * buffer_length);
                             buffer_consumer_->scaleUp(2 * buffer_length);
@@ -234,6 +266,7 @@ namespace mylog
                         }
                         else
                         {
+                            // return buffer_productor_->getAvailable() > buffer_length;
                             return true;
                         }
                     }
