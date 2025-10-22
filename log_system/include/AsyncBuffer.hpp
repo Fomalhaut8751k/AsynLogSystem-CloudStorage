@@ -28,6 +28,9 @@ namespace mylog
         AsyncBuffer()
         {
             init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();
+            
+            init_buffer_size_ = 20480;
+
             buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
             buffer_size_ = init_buffer_size_;
             buffer_pos_ = 0;
@@ -76,7 +79,6 @@ namespace mylog
                 如果一个用户将要写入数据，发现缓冲区不够写了，就等待？
             */
             std::unique_lock<std::mutex> lock(BufferWriteMutex_);
-            
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
         }
