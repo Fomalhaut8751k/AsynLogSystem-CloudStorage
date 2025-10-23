@@ -12,7 +12,8 @@ int main()
 
     // 初始化并启动线程池 
     std::unique_ptr<mylog::ThreadPool> threadpool_ = std::make_unique<mylog::ThreadPool>();
-    threadpool_->setup("127.0.0.1", 8000);
+    // threadpool_->setup("43.136.108.172", 8080);
+    threadpool_->setup();
     threadpool_->startup();
 
     // 初始化启动日志系统并创建日志器

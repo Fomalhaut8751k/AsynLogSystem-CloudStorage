@@ -59,10 +59,10 @@ namespace mylog
         bool ExitProductorLabel_;
         bool ExitConsumerLabel_;
 
-        // 测试功能
-        std::chrono::_V2::steady_clock::time_point start_time_;  
-        std::atomic_int cnt;
-        std::atomic_int pdc;
+        // // 测试功能
+        // std::chrono::_V2::steady_clock::time_point start_time_;  
+        // std::atomic_int cnt;
+        // std::atomic_int pdc;
 
 
     public:
@@ -75,7 +75,7 @@ namespace mylog
             label_data_ready_(false),
             current_effective_expansion_times(-1),
 
-            start_time_(std::chrono::steady_clock::now()),
+            // start_time_(std::chrono::steady_clock::now()),
 
             expand_mode_(ExpandMode::HARDEXPANSION)
 
@@ -88,8 +88,8 @@ namespace mylog
 
             effective_expansion_times = 5;
 
-            pdc = 0;
-            cnt = 0;
+            // pdc = 0;
+            // cnt = 0;
         }
 
         ~AsyncWorker()
@@ -128,11 +128,11 @@ namespace mylog
                 );
 
                 // 从生产者开始处理第一条日志开始:
-                if(pdc == 0) 
-                {
-                    start_time_ = std::chrono::steady_clock::now();
-                    pdc = 1;
-                }
+                // if(pdc == 0) 
+                // {
+                //     start_time_ = std::chrono::steady_clock::now();
+                //     pdc = 1;
+                // }
                 
 
                 if(ExitLabel_)
@@ -210,16 +210,16 @@ namespace mylog
                 for(std::string message_formatted: buffer_consumer_->read())
                 {
                     // 把日志消息发送到指定的位置
-                    cnt++;
+                    // cnt++;
                     log_func_(message_formatted);  
                 }
 
-                // 如果处理完后发现事件大于1秒了就输出
-                if(pdc == 1 && std::chrono::steady_clock::now() - start_time_ > std::chrono::seconds(1))
-                {
-                    std::cerr << "1秒内处理了: " << cnt << " 条日志" << std::endl;
-                    pdc = 2;
-                }
+                // // 如果处理完后发现事件大于1秒了就输出
+                // if(pdc == 1 && std::chrono::steady_clock::now() - start_time_ > std::chrono::seconds(1))
+                // {
+                //     std::cerr << "1秒内处理了: " << cnt << " 条日志" << std::endl;
+                //     pdc = 2;
+                // }
                 // std::cerr << cnt << std::endl;
 
                 buffer_consumer_->clear();

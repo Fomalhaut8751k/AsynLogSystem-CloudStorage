@@ -35,7 +35,7 @@ private:
     static std::ofstream file_;        // 日志文件
 
 public:
-    Server(const std::string addr = "127.0.0.1", unsigned int port = 8000)
+    Server()
     {
         logfilepath_ = "./logfile.log";
         file_.open(logfilepath_, std::ios::app);
@@ -47,8 +47,8 @@ public:
 
         memset(&server_addr_, 0, sizeof(server_addr_));
         server_addr_.sin_family = AF_INET;
-        server_addr_.sin_addr.s_addr = inet_addr("127.0.0.1");
-        server_addr_.sin_port = htons(8000);
+        server_addr_.sin_addr.s_addr = inet_addr("0.0.0.0");
+        server_addr_.sin_port = htons(8080);
 
         base_ = event_base_new();
         if(NULL == base_)

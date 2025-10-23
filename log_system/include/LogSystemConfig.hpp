@@ -24,6 +24,8 @@ namespace mylog
         unsigned int init_thread_size_;
         unsigned int thread_size_threshhold_;
         unsigned int logque_max_threshhold_;
+        std::string backlog_ip_addr_; 
+        unsigned int backlog_port_;
 
         // 异步日志系统参数
         unsigned int init_buffer_size_;
@@ -69,7 +71,8 @@ namespace mylog
             logque_max_threshhold_ = config_js["logque_max_threshhold"];           // 日志队列上限数量
             init_buffer_size_ = config_js["init_buffer_size"];                     // 初始缓冲区大小
             effective_expansion_times_ = config_js["effective_expansion_times"];   // 有效扩容计数
-
+            backlog_ip_addr_ = config_js["backlog_ip_addr"];                       // 远程服务器的ip地址
+            backlog_port_ = config_js["backlog_port"];                             // 远程服务器的端口号
 
             // 把初始化配置发送给异步日志系统
             std::string config_log = "";
@@ -78,6 +81,8 @@ namespace mylog
             config_log += ("\n  init_thread_size: " + std::to_string(init_thread_size_));
             config_log += ("\n  thread_size_threshhold: " + std::to_string(thread_size_threshhold_));
             config_log += ("\n  logque_max_threshhold: " + std::to_string(logque_max_threshhold_));
+            config_log += ("\n  backlog_ip_addr: " + backlog_ip_addr_);
+            config_log += ("\n  backlog_port: " + std::to_string(backlog_port_));
             config_log += "\nASYNCBUFFER: ";
             config_log += ("\n  init_buffer_size: " + std::to_string(init_buffer_size_));
             config_log += "\nASYNCWORKER: ";
@@ -95,6 +100,9 @@ namespace mylog
         unsigned int GetInitBufferSize() const { return init_buffer_size_; }
 
         unsigned int GetEffectiveExpansionTimes() const { return effective_expansion_times_; }
+
+        std::string GetBackLogIpAddr() const { return backlog_ip_addr_; }
+        unsigned int GetBackLogPort() const { return backlog_port_; }
 
     };
 }

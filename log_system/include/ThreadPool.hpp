@@ -158,17 +158,17 @@ namespace mylog
             Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
         }
 
-        void setup(std::string server_addr,  unsigned int server_port)
+        void setup()
         {
-            serverAddr_ = server_addr;
-            serverPort_ = server_port;
-            
-            curThreadSize_ = 0;
-            logSize_ = 0;
+            serverAddr_ = mylog::Config::GetInstance().GetBackLogIpAddr();
+            serverPort_ = mylog::Config::GetInstance().GetBackLogPort();
 
             initThreadSize_ = mylog::Config::GetInstance().GetInitThreadSize();
             threadSizeThreshHold_ = mylog::Config::GetInstance().GetThreadSizeThreshhold();
             logQueMaxThreshHold_ = mylog::Config::GetInstance().GetLogQueMaxThreshhold();
+
+            curThreadSize_ = 0;
+            logSize_ = 0;
 
             ThreadPoolRunning_ = true;  // 表示线程池正在运行中
         }
