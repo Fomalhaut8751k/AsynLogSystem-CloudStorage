@@ -173,7 +173,7 @@ namespace mylog
             ThreadPoolRunning_ = true;  // 表示线程池正在运行中
         }
 
-        void startup()
+        std::pair<std::string, mylog::LogLevel> startup()
         {
             // 先创建足够数量的线程
             for(int i = 0; i < initThreadSize_; i++)
@@ -188,6 +188,18 @@ namespace mylog
             {
                 threads_[index].get()->start();   // 启动线程,Thread自己会设置为分离线程
                 // std::cerr << "【线程池第" << index << "个线程就绪】\n" << std::endl;
+            }
+
+            // 休眠20ms保证所有线程都返回并根据自己情况修改curThreadSize_的值
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            // std::cout << curThreadSize_ << std::endl;
+            if(curThreadSize_ == 0)  // 没有连接上远程服务器
+            {
+                return {"No thread connected to the remote server, please check the startup status of the remote server", mylog::LogLevel::WARN};
+            }
+            else
+            {
+                return {"There are " + std::to_string(curThreadSize_) + " threads connecting to the remote server here", mylog::LogLevel::INFO};
             }
         }
 
