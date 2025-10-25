@@ -35,7 +35,7 @@ public:
         
         // 构建 wget 命令
         // std::string command = "wget --post-file=\"" + file_path + "\" ";
-        std::string command = "wget --progress=bar:force --post-file=\"" + file_path + "\" ";
+        std::string command = "wget --progress=bar:force --tries=1 --timeout=60 --post-file=\"" + file_path + "\" ";
         command += "--header=\"FileName: " + encoded_name + "\" ";
         command += "--header=\"StorageType: " + storage_type + "\" ";
         command += "--header=\"Content-Type: application/octet-stream\" ";
@@ -98,9 +98,11 @@ public:
         }
 
         
-        std::string command = "wget --progress=bar:force ";
+        std::string command = "wget --progress=bar:force --tries=1 --timeout=60 ";
         command += "-O \"" + save_path_ + "\" ";
         command += "\"" + server_url_ + "/download/" + encoded_filename + "\"";
+
+        std::cerr << save_path_ << " " << encoded_filename << std::endl;
         
         std::cout << "Download: " << filename << std::endl;
         int result = system(command.c_str());

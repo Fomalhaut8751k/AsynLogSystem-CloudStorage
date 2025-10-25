@@ -39,7 +39,7 @@ namespace mystorage
         {
             std::string path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
             path = UrlDecode(path);
-            mylog::GetLogger("default")->Log({("get req, uri: %s", path.c_str()), mylog::LogLevel::INFO});
+            mylog::GetLogger("default")->Log({("get request, uri: " + path), mylog::LogLevel::INFO});
 
             // 根据请求中的内容判断是什么请求
             // 下载请求
@@ -361,6 +361,7 @@ namespace mystorage
             // 2. 根据资源路径，获取StorageInfo
             StorageInfo info;
             std::string resource_path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
+
             resource_path = UrlDecode(resource_path);
 
             // 根据resource_path在tabel_中搜索对应的StorageInfo
@@ -371,13 +372,13 @@ namespace mystorage
 
                 但是url_是table_的键？
             */
-            mylog::GetLogger("default")->Log({("request resource_path: %s", resource_path.c_str()), mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({("request resource_path: %s", resource_path.c_str()), mylog::LogLevel::INFO});
 
             std::string download_path = info.storage_path_;
             // 如果是深度存储，压缩过的，就得先解压，把它放到low_storage中
             if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos)
             {
-                mylog::GetLogger("default")->Log({("uncompress: %s", download_path.c_str()), mylog::LogLevel::INFO});
+                mylog::GetLogger("default")->Log({("uncompress: " + download_path), mylog::LogLevel::INFO});
                 FileUtil fu(download_path);
                 /*
                     info.url_: /download/pcre-8.45.zip   =>  pcre-8.45.zip
@@ -387,7 +388,7 @@ namespace mystorage
                     + download_path.find_last_of('/') + 1, download_path.end()
                 );
                 FileUtil dirCreate(Config::GetInstance().GetLowStorageDir());
-                dirCreate.CreateDirectory();   // 之前可能用的都是深度存储，所有low_storage可能不存在
+                dirCreate.CreateDirectory();   // 之前可能用的都是深度存储，所以low_storage可能不存在
                 
                 // 把文件解压后放入low_storage中
                 /*
@@ -398,7 +399,7 @@ namespace mystorage
                 */
                 fu.UnCompress(download_path);  // 把fu指向文件的内容解压后写入dirCreate执行文件的内容             
             }
-            mylog::GetLogger("default")->Log({("request download_path: %s", download_path.c_str()), mylog::LogLevel::INFO});
+            mylog::GetLogger("default")->Log({("request download_path: " + download_path), mylog::LogLevel::INFO});
             FileUtil fu(download_path);
             // deep storage中压缩文件存在，但是解压后的文件不存在，即压缩的时候出错
             if(-1 == fu.Exists() && info.storage_path_.find("deep_storage") != std::string::npos)
@@ -423,14 +424,14 @@ namespace mystorage
                 if(old_etag == GetETag(info))
                 {
                     retrans = true;
-                    mylog::GetLogger("default")->Log({("%s need breakpoint continuous transmission", download_path.c_str()), mylog::LogLevel::INFO});
+                    mylog::GetLogger("default")->Log({(download_path + " need breakpoint continuous transmission"), mylog::LogLevel::INFO});
                 }
             }
 
             // 读取文件数据，放入rsp.body中
             if(-1 == fu.Exists())
             {
-                mylog::GetLogger("default")->Log({("%s not exists", download_path.c_str()), mylog::LogLevel::WARN});
+                mylog::GetLogger("default")->Log({(download_path + " not exists"), mylog::LogLevel::WARN});
                 download_path += "not exist";
                 evhttp_send_reply(req, 404, download_path.c_str(), NULL);
                 return -1;
@@ -439,14 +440,14 @@ namespace mystorage
             int fd = open(download_path.c_str(), O_RDONLY);
             if(-1 == fd)
             {
-                mylog::GetLogger("default")->Log({("open file error: %s -- %s", download_path.c_str(), strerror(errno)), mylog::LogLevel::ERROR});
+                mylog::GetLogger("default")->Log({("open file error: " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
                 evhttp_send_reply(req, HTTP_INTERNAL, strerror(errno), NULL);
                 return -1;
             }
             
             if(-1 == evbuffer_add_file(outbuf, fd, 0, fu.FileSize()))
             {
-                mylog::GetLogger("default")->Log({("evbuffer_add_file: %d -- %s -- %s", fd, download_path.c_str(), strerror(errno)), mylog::LogLevel::ERROR});
+                mylog::GetLogger("default")->Log({("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
                 evhttp_send_reply(req, HTTP_INTERNAL, strerror(errno), NULL);
                 return -1;
             }
@@ -458,12 +459,12 @@ namespace mystorage
             if(false == retrans)
             {
                 evhttp_send_reply(req, HTTP_OK, "Success", NULL);
-                mylog::GetLogger("asynclogger")->Log({"evhttp_send_reply: HTTP_OK", mylog::LogLevel::INFO});
+                mylog::GetLogger("default")->Log({"evhttp_send_reply: HTTP_OK", mylog::LogLevel::INFO});
             }
             else
             {
                 evhttp_send_reply(req, 206, "breakpoint continuous transmission", NULL);
-                mylog::GetLogger("asynclogger")->Log({"evhttp_send_reply: 206", mylog::LogLevel::INFO});
+                mylog::GetLogger("default")->Log({"evhttp_send_reply: 206", mylog::LogLevel::INFO});
             }
             if(download_path != info.storage_path_)
             {
@@ -514,7 +515,7 @@ namespace mystorage
     public:
         StorageServer()
         {
-            server_ip_ = Config::GetInstance().GetServerIp();
+            // server_ip_ = Config::GetInstance().GetServerIp();
             server_port_ = Config::GetInstance().GetServerPort();
             download_prefix_ = Config::GetInstance().GetDownLoadPrefix();
         }

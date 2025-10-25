@@ -38,7 +38,11 @@ namespace mylog
         {
             std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
             Glb->BuildLoggerName("default");
-            Glb->BuildLoggerFlush<mylog::ConsoleFlush>("./log/app.log", -1);
+
+            // Glb->BuildLoggerFlush<mylog::ConsoleFlush>("./log/app.log", -1);
+            Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", -1);
+            // Glb->BuildLoggerFlush<mylog::RollFileFlush>("./log/app.log", 4096);
+
             Glb->BuildLoggerThreadPool(thread_pool);
             LoggerMap["default"] = Glb->Build();
         }

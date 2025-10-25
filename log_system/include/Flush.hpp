@@ -41,7 +41,27 @@ namespace mylog
     public:
         FileFlush(std::string file_path, size_t size = 1)
         {
-            file_path_ = file_path;
+            // 获取文件名字
+            std::pair<std::string, std::string> file_item = mylog::Util::File::Path(file_path);
+            if(file_item.second == "")
+            {
+                printf("log file is not invalid");
+                exit(-1);
+            }
+
+            std::string file_path_root = file_item.first;
+            std::string file_name = file_item.second;
+
+            int pos = file_name.rfind(".");
+            if(file_name.substr(pos+1) != "log")
+            {
+                printf("log file is not invalid");
+                exit(-1);
+            }
+
+            // file.open()创建文件的前提是前级的目录都存在
+            mylog::Util::File::CreateDirectory(file_path_root);
+            
             file_.open(file_path, std::ios::app);
         }  
         
@@ -153,7 +173,7 @@ namespace mylog
             // 视为可以写入
             if(current_log_size + log_size <= size_)  
             {
-                std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
+                // std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
                 file_ << formatted_log << std::endl;
             }
             // 空间不足，需要创建新的.log
@@ -174,7 +194,7 @@ namespace mylog
                 // 当然新的空日志文件限定的大小比如200也写不下太大的字符串
                 // 但依然写入，不过下一次就不会写着这里
                 current_file_path_ = new_file_path;
-                std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
+                // std::cerr << "有日志被写入: " << current_file_path_ << "中" << std::endl;
                 file_ << formatted_log << std::endl;
             }
 
