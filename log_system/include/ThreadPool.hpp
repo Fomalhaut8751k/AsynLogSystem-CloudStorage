@@ -12,42 +12,11 @@
 
 #include "backlog/ClientBackupLog.hpp"
 #include "LogSystemConfig.hpp"
+#include "Thread.hpp"
 
 
 namespace mylog
 {
-    // 线程类
-    class Thread
-    {
-    private:
-        using t_uint = unsigned int;
-        using ThreadFunc = std::function<void(int)>;
-        
-        t_uint threadId_;     // 线程号
-        ThreadFunc threadfunc_;      // 线程函数
-        static t_uint generateId_;        // 
-
-    public:
-        Thread(ThreadFunc threadfunc)
-        {
-            threadfunc_ = threadfunc;
-            threadId_ = generateId_++;
-        }
-
-        void start()
-        {
-            std::thread t(threadfunc_, threadId_);
-            t.detach();
-        }
-
-        // 获取线程id
-        int getId() const
-        {
-            return threadId_;
-        }
-        
-    };
-    unsigned int Thread::generateId_ = 1;
 
     class ThreadPool
     {
@@ -81,12 +50,13 @@ namespace mylog
         // 线程池启动情况
         std::atomic_bool ThreadPoolRunning_;
 
-        void threadFunc(tp_uint threadid)
+        void threadFunc(tp_uint threadid, Thread* thread_)
         {
             // 创建客户端
             std::unique_ptr<Client> client_ =
-                std::make_unique<Client>(serverAddr_, serverPort_, threadid);
+                std::make_unique<Client>(serverAddr_, serverPort_, threadid, thread_);
             // 启动客户端并连接服务器, 其中包含了event_base_dispatch(base);
+
             if(client_->start())
             {
                 curThreadSize_++;
@@ -94,6 +64,8 @@ namespace mylog
             else
             {
                 client_->stop();
+                threads_.erase(threadid);
+                // curThreadSize_--;
                 return;
             }
 
@@ -105,15 +77,26 @@ namespace mylog
                 {   // 先获取锁
                     std::unique_lock<std::mutex> lock(logQueMtx_);  
                     // 尝试获取任务
-                    notEmpty_.wait(lock, [&]()->bool{ return logSize_ > 0 || ThreadPoolRunning_ == false; });   // 等待日志队列中有任务被提交，就会notify唤醒
+                    notEmpty_.wait(lock, [&]()->bool{   // 如果client断开连接，就会被直接唤醒。
+                        return !client_->GetConnectedStatus() || logSize_ > 0 || ThreadPoolRunning_ == false; 
+                    }); 
+                    // 如果是因为有日志但是client已经断开连接而来到这里                        
+                    if(!client_->GetConnectedStatus())
+                    {   // 关闭Client并通知其他线程也关闭
+                        client_->stop(); 
+                        threads_.erase(threadid);
+                        notEmpty_.notify_all();
+                        curThreadSize_--;
+                        return;
+                    }
                     // 确认taskQue_确实不为空
                     if(logSize_ > 0)
                     {
-                        log = logQue_.front();  // std::function<void()>;
+                        log = logQue_.front(); 
                         logQue_.pop();
                         logSize_--;
                     }
-                    else  // 唤醒条件要么有日志，要么线程池关闭了，但是先判断有日志
+                    else  // 唤醒条件要么有日志，要么线程池关闭了，但是先判断有日志，保证下达关闭指令后先处理完日志
                     { 
                         break;
                     }
@@ -135,9 +118,8 @@ namespace mylog
             
             curThreadSize_--;
             client_->stop();  // 清理base, bv，关闭事件循环
+            threads_.erase(threadid);
             Exit_.notify_all();  // 通知析构函数那里，我这个线程已经清理完成了
-            
-            // std::cout << "【线程池第" << threadid << "个线程关闭】\n" << std::endl;  
         }
 
     public:    
@@ -158,6 +140,11 @@ namespace mylog
             Exit_.wait(lock, [&]()->bool { return curThreadSize_ == 0;}); 
         }
 
+        void reloadnotifyall()
+        {
+            notEmpty_.notify_all();
+        }
+
         void setup()
         {
             serverAddr_ = mylog::Config::GetInstance().GetBackLogIpAddr();
@@ -175,24 +162,32 @@ namespace mylog
 
         std::pair<std::string, mylog::LogLevel> startup()
         {
+            std::vector<int> threadids_;
+
+            // std::cerr << "threads_: " << threads_.size() << std::endl;
+            // std::cerr << "curThreadSize_: " << curThreadSize_ << std::endl; 
+
             // 先创建足够数量的线程
             for(int i = 0; i < initThreadSize_; i++)
             {
                 std::unique_ptr<Thread> thread_ = std::make_unique<Thread>(
-                    std::bind(&ThreadPool::threadFunc, this, std::placeholders::_1)
+                    std::bind(&ThreadPool::threadFunc, this, std::placeholders::_1, std::placeholders::_2)
                 );
-                threads_.emplace(thread_.get()->getId(), std::move(thread_));  
+
+                int threadid_ = thread_.get()->getId();
+                threads_.emplace(threadid_, std::move(thread_));  
+                threadids_.emplace_back(threadid_);
             }
 
-            for(int index = 1; index <= initThreadSize_; index++)
+            std::cerr << threads_.size() << std::endl;
+            for(int& threadid: threadids_)
             {
-                threads_[index].get()->start();   // 启动线程,Thread自己会设置为分离线程
-                // std::cerr << "【线程池第" << index << "个线程就绪】\n" << std::endl;
+                threads_[threadid].get()->start();   // 启动线程,Thread自己会设置为分离线程  unordered_map
             }
 
             // 休眠20ms保证所有线程都返回并根据自己情况修改curThreadSize_的值
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            // std::cout << curThreadSize_ << std::endl;
+
             if(curThreadSize_ == 0)  // 没有连接上远程服务器
             {
                 return {"No thread connected to the remote server, please check the startup status of the remote server", mylog::LogLevel::WARN};
@@ -220,8 +215,22 @@ namespace mylog
             notEmpty_.notify_all();        
         }
 
-        bool Connected() const { return curThreadSize_ > 0;}
-
+        // 判断处在线程函数中的线程的个数(运行中但不一定是正常运行，因为他的Client可能挂了)
+        bool Connected() const { std::cerr << curThreadSize_ << std::endl; return curThreadSize_ > 0;}
+   
+        // 返回处在线程函数中的线程并且正常运行的线程的个数
+        int ClientActiveNumber() const
+        {
+            int number = 0;
+            for(auto& item: threads_)
+            {
+                if(item.second->ClientActiveStatus())
+                {
+                    number++;
+                }
+            }
+            return number;
+        }
     };
 }
 

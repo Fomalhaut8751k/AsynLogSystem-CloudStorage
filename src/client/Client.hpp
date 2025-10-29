@@ -12,7 +12,7 @@
 #include "base64.h"
 
 class StorageClient {
-private:
+protected:
     std::string server_url_;
     
     // 执行 wget 命令并返回结果
@@ -23,6 +23,7 @@ private:
     
 public:
     StorageClient(const std::string& server_url) : server_url_(server_url) {}
+    virtual ~StorageClient() = default;
     
     // 上传文件 - 使用 wget
     bool Upload(const std::string& file_path, const std::string& storage_type) {
@@ -189,18 +190,6 @@ public:
         
         int return_code = pclose(pipe);
 
-        // std::cerr << return_code << " || " << result << std::endl;
-        // Json::Value response;
-        // mystorage::JsonUtil::UnSerialize(result, &response);
-        
-        // if ("success" == response["status"].asString()) {
-        //     std::cout << "Remove file: " + filename + " success" << std::endl;
-        //     return true;
-        // } else {
-        //     std::cerr << "Remove file: " + filename + " failed" << std::endl;
-        //     return false;
-        // }
-
         // 若删除成功，服务器会发来一条响应的json串
         if(result == "")
         {
@@ -214,5 +203,145 @@ public:
         }
 
         return true;
+    }
+};
+
+
+// 超级用户即管理员
+class StorageSuperClient: public StorageClient
+{
+private:
+    struct event_base* base_;
+    struct sockaddr_in server_addr_;
+    struct bufferevent* bev_;
+
+    std::string addr_;
+    unsigned int port_;
+    std::string server_ip_;
+
+    std::unique_ptr<bool> backlogOnline_;
+
+public:
+    StorageSuperClient(const std::string& server_url): StorageClient(server_url) 
+    {
+        backlogOnline_ = std::make_unique<bool>(false); 
+    }
+
+    ~StorageSuperClient()
+    {
+        if (bev_) {
+            bufferevent_free(bev_);
+        }
+        if (base_) {
+            event_base_free(base_);
+        }
+    }
+
+    // 尝试连接远程服务器
+    bool ReConnectBackLog()
+    {
+        base_ = event_base_new();
+        if(!base_)
+        {
+            mylog::GetLogger("default")->Log({"Reload ThreadPool faild when event_base_new", mylog::LogLevel::WARN});
+            return false;
+        }
+
+        addr_ = "43.136.108.172";
+        port_ = 8080;
+        
+        memset(&server_addr_, 0, sizeof(server_addr_));
+        server_addr_.sin_family = AF_INET;
+        server_addr_.sin_addr.s_addr = inet_addr(addr_.c_str());
+        server_addr_.sin_port = htons(port_);
+
+        bev_ = bufferevent_socket_new(base_, -1, BEV_OPT_CLOSE_ON_FREE);
+        if (NULL == bev_) {
+            std::cerr << "bufferevent_socket_new error!" << std::endl;
+            event_base_free(base_);
+            exit(-1);
+        }
+
+        // 打包读回调函数需要用到的参数
+        bufferevent_setcb(bev_, NULL, NULL, event_callback, (void*)backlogOnline_.get());
+        int ret = bufferevent_enable(bev_, EV_READ | EV_WRITE);
+        if(ret < 0)
+        {
+            return false;
+        }
+
+        struct timeval tv = {2, 0}; // 2秒
+        struct event *timeout_event = evtimer_new(base_, timeout_cb, (void*)base_);
+
+        // 尝试连接服务器
+        ret = bufferevent_socket_connect(bev_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
+        if(ret < 0)  // ret = 0 不代表连接成功
+        {
+            return false;
+        }
+
+        // 启动事件循环，无论连接成功与否都会离开事件循环
+        std::thread loop(event_base_dispatch, base_);
+
+        loop.join();
+        
+        // 如果是因为连接到服务器触发了事件循环，那么*backlogOnline = true
+        if(*backlogOnline_)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    // 通知服务器让线程池重新连接远程服务器
+    bool ReLoadThreadPool()
+    {
+        // 构建 wget 命令
+        std::string command = "wget -q -O - ";
+        command += "\"" + server_url_ + "/reload\" ";
+        command += "2>/dev/null";  // 隐藏错误输出
+
+        // 使用 popen 来捕获输出
+        FILE* pipe = popen(command.c_str(), "r");
+        if (!pipe) {
+            std::cerr << "Failed to execute wget command" << std::endl;
+            return false;
+        }
+        pclose(pipe);
+        
+        return true;
+
+        // int return_code = pclose(pipe);
+        
+        // if (return_code == 0) {
+        //     std::cout << "ReLoad threadpool successfully " << std::endl;
+        //     return true;
+        // } else {
+        //     std::cerr << "Reload threadpool failed " << std::endl;
+        //     return false;
+        // }
+    }
+
+    const bool* GetBacklogOnline() const { return backlogOnline_.get(); }
+
+    // 超时回调函数
+    static void timeout_cb(evutil_socket_t fd, short event, void *arg) 
+    {
+        struct event_base* base = (struct event_base*)arg;
+        event_base_loopexit(base, nullptr); // 超时即关闭事件循环
+    }
+
+
+    // 连接状态回调函数
+    static void event_callback(struct bufferevent *bev, short events, void *ctx)
+    {
+        // std::cerr << "触发了事件回调函数" << std::endl;
+        if (events & BEV_EVENT_CONNECTED) 
+        {
+            bool* backlogOnline = (bool*)ctx;
+            *backlogOnline = true;
+        }
+        struct event_base *base = bufferevent_get_base(bev);    
+        event_base_loopexit(base, NULL);  // 退出事件循环
     }
 };

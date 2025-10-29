@@ -39,10 +39,6 @@ int main(int argc, char* argv[])
     {
         client.Remove(argv[2]);
     }
-    else if (command == "test")   // 性能测试
-    {
-        
-    }
     else 
     {
         std::cerr << "Invalid command or arguments" << std::endl;

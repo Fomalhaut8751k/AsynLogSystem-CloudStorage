@@ -34,6 +34,8 @@ namespace mystorage
 
         evhttp* httpd_;
 
+        mylog::ThreadPool* threadpool_;
+
         // 回调函数
         static void GenHandler(struct evhttp_request* req, void* arg)
         {
@@ -66,6 +68,11 @@ namespace mystorage
             else if(path == "/remove")
             {
                 Remove(req, arg);
+            }
+            // 重新启动线程池的连接
+            else if(path == "/reload")
+            {
+                Reload(req, arg);
             }
             else
             {
@@ -512,18 +519,41 @@ namespace mystorage
             return 0;
         }
 
+        // 让服务端的线程池尝试连接远程服务器
+        static int Reload(struct evhttp_request* req, void* arg)
+        {
+            mylog::GetLogger("default")->Log({"Attempt to re-establish the connection with the remote server ", mylog::LogLevel::WARN});
+            mylog::ThreadPool* threadpool_ = (mylog::ThreadPool*)arg;
+
+            if(threadpool_->ClientActiveNumber() > 0)
+            {
+                mylog::GetLogger("default")->Log({"Re-establish failed because the connection already exists", mylog::LogLevel::WARN});
+                return -1;
+            }
+            // 重启线程池
+            threadpool_->reloadnotifyall();
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::pair<std::string, mylog::LogLevel> threadpool_connected_message = threadpool_->startup();
+            mylog::GetLogger("default")->Log(threadpool_connected_message);
+            return 0;
+        }
+
     public:
         StorageServer()
         {
-            // server_ip_ = Config::GetInstance().GetServerIp();
             server_port_ = Config::GetInstance().GetServerPort();
             download_prefix_ = Config::GetInstance().GetDownLoadPrefix();
         }
 
         // 初始化设置
-        int InitializeConfiguration()
+        int InitializeConfiguration(mylog::ThreadPool* threadpool)
         {
             // mylog::GetLogger("default")->Log({"Initialize storage server configuration", mylog::LogLevel::INFO});
+
+            // 加载线程池指针，用于必要时重启线程池
+            threadpool_ = threadpool;
+
             base_ = event_base_new();
             if(!base_)
             {   
@@ -541,7 +571,7 @@ namespace mystorage
                 mylog::GetLogger("default")->Log({"Initialize terminate when evhttp_bind_socket", mylog::LogLevel::ERROR});
                 return -1;
             }
-            evhttp_set_gencb(httpd_, GenHandler, NULL);
+            evhttp_set_gencb(httpd_, GenHandler, (void*)threadpool_);
 
             return 0;
         }

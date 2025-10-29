@@ -166,6 +166,10 @@ void listener_call_back(struct evconnlistener *listener, evutil_socket_t fd, str
 
     // 使能事件类型
     bufferevent_enable(bev, EV_READ);  // 使能读
+
+    // 向客户端发送连接确认信息
+    const char *response_msg = "Connection established. Welcome to the server!\n";
+    bufferevent_write(bev, response_msg , strlen(response_msg));
 }
 
 #endif
