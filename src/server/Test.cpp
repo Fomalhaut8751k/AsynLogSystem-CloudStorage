@@ -2,17 +2,21 @@
 #include "Service.hpp"
 #include "StorageUtils.hpp"
 
-mystorage::DataManager* storage_data_;
 
+mystorage::DataManager* storage_data_;
+std::unique_ptr<mylog::ThreadPool> threadpool_;
 
 int main()
 {   
+    // std::unique_ptr<mylog::ThreadPool>& threadpool_ = mylog::threadpool_; 
+
     std::pair<std::string, mylog::LogLevel> log_system_config_message 
                 = mylog::Config::GetInstance().ReadConfig();
 
     // 初始化并启动线程池 
-    std::unique_ptr<mylog::ThreadPool> threadpool_ = std::make_unique<mylog::ThreadPool>();
+    threadpool_ = std::make_unique<mylog::ThreadPool>();
     threadpool_->setup();
+
     std::pair<std::string, mylog::LogLevel> threadpool_connected_message = threadpool_->startup();
 
     // 初始化启动日志系统并创建日志器
@@ -37,7 +41,7 @@ int main()
 
     std::thread t1([]()->void{
         std::unique_ptr<mystorage::StorageServer> storage_server_  = std::make_unique<mystorage::StorageServer>();
-        storage_server_->InitializeConfiguration();
+        storage_server_->InitializeConfiguration(threadpool_.get());
         storage_server_->PowerUp();
     });
     

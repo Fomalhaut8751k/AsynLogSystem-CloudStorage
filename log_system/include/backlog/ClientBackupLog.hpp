@@ -19,21 +19,8 @@
 #include <functional>
 #include <future>
 
-
-class Client;
-
-
-// 读取服务器回复的回调函数
-void read_callback(struct bufferevent* bev, void* ctx);
-// 事件回调函数
-void event_callback(struct bufferevent* bev, short events, void* ctx);
-// 启动事件循环
-void event_loop_start(struct event_base* base, std::packaged_task<bool()>* returnEventLoopExit);
-
-bool returnLabel(bool label)
-{
-    return label;
-}
+// #include "../ThreadPool.hpp"
+#include "../Thread.hpp"
 
 class Client
 {
@@ -41,8 +28,6 @@ private:
     struct event_base* base_;
     struct sockaddr_in server_addr_;
     struct bufferevent* bev_;
-    // struct event* ev_;
-    // struct timeval tv = {5, 0}; // 5秒
 
     std::string addr_;
     unsigned int port_;
@@ -57,25 +42,27 @@ private:
 
     // 连接成功符号
     bool Connecting_;
-    std::shared_ptr<std::packaged_task<bool(bool)>> returnConnectLabel;
-    std::shared_ptr<std::packaged_task<bool()>> returnEventLoopExit;
+
+    mylog::Thread* thread_;
 
 public:
     // static std::atomic_int init_evthread_;
 
-    Client(const std::string addr, unsigned int port, unsigned int threadid)
+    Client(const std::string addr, unsigned int port, unsigned int threadid, mylog::Thread* thread_ = nullptr)
     {
         log_message_ = "";
         Connecting_ = false;
         threadid_ = threadid;
         port_ = port;
         addr_ = addr;
+
+        this->thread_ = thread_;
     }
 
-    ~Client()
-    {
-        // std::cout << "the client has exited!" << std::endl;
-    }
+    ~Client() = default;
+
+    // 获取线程与远程服务器的连接状态
+    bool GetConnectedStatus() const { return Connecting_; }
 
     bool start()
     {
@@ -113,7 +100,13 @@ public:
             return false;
         }
 
-        std::thread loop([&]()->void{ ret = event_base_dispatch(base_);});
+        std::thread loop([&]()->void{ 
+            ret = event_base_dispatch(base_);
+            // 如果远程服务器关机了，连接断了，事件循环就会退出
+            // std::cerr << "pdcHelloWorld" << std::endl;
+            thread_->Deactivate();
+            Connecting_ = false;
+        });
 
         loop.detach(); 
 
@@ -145,24 +138,21 @@ public:
         bufferevent_free(bev_);
         event_base_free(base_);
     }
-};
 
-// std::atomic_int Client::init_evthread_ = 0;
-
-
-// 读取服务器回复的回调函数
-void read_callback(struct bufferevent* bev, void* ctx) {
-    struct evbuffer* input_ = bufferevent_get_input(bev);
-    size_t len = evbuffer_get_length(input_);
-    
-    if (len > 0) {
-        char buffer[1024];
-        evbuffer_remove(input_, buffer, len);
-        buffer[len] = '\0';
+    // 读取服务器回复的回调函数
+    static void read_callback(struct bufferevent* bev, void* ctx) {
+        struct evbuffer* input_ = bufferevent_get_input(bev);
+        size_t len = evbuffer_get_length(input_);
         
-        std::cout << "服务器回复: " << buffer;
-        std::cout.flush();
+        if (len > 0) {
+            char buffer[1024];
+            evbuffer_remove(input_, buffer, len);
+            buffer[len] = '\0';
+            
+            std::cout << "服务器回复: " << buffer;
+            std::cout.flush();
+        }
     }
-}
+    };
 
 #endif
