@@ -296,6 +296,7 @@ public:
     // 通知服务器让线程池重新连接远程服务器
     bool ReLoadThreadPool()
     {
+        server_url_ = "http://172.30.173.126:8081";
         // 构建 wget 命令
         std::string command = "wget -q -O - ";
         command += "\"" + server_url_ + "/reload\" ";

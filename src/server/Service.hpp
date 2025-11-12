@@ -19,6 +19,7 @@
 #include "StorageDataManager.hpp"
 
 extern mystorage::DataManager* storage_data_;
+extern std::string logger_name_;
 
 namespace mystorage
 {
@@ -41,7 +42,9 @@ namespace mystorage
         {
             std::string path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
             path = UrlDecode(path);
-            mylog::GetLogger("default")->Log({("get request, uri: " + path), mylog::LogLevel::INFO});
+
+            // mylog::GetLogger("default")->Log({("get request, uri: " + path), mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("get request, uri: " + path);
 
             // 根据请求中的内容判断是什么请求
             // 下载请求
@@ -83,7 +86,8 @@ namespace mystorage
         // 上传文件
         static int Upload(struct evhttp_request* req, void* arg)
         {
-            mylog::GetLogger("default")->Log({"Upload start", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"Upload start", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("Upload start");
             /*
                 请求中包含"low_storage"，说明请求中存在文件数据，并希望普通存储
                 请求中包含"deep_storage，则压缩后存储
@@ -91,7 +95,8 @@ namespace mystorage
             struct evbuffer* buf = evhttp_request_get_input_buffer(req);
             if(nullptr == buf)
             {
-                mylog::GetLogger("default")->Log({"Upload fail because evhttp_request_get_input_buffer is empty", mylog::LogLevel::WARN});
+                // mylog::GetLogger("default")->Log({"Upload fail because evhttp_request_get_input_buffer is empty", mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn("Upload fail because evhttp_request_get_input_buffer is empty");
                 return -1;
             }
 
@@ -100,7 +105,9 @@ namespace mystorage
             if(0 == len)
             {
                 evhttp_send_reply(req, HTTP_BADREQUEST, "file empty", NULL);
-                mylog::GetLogger("default")->Log({"Upload fail because evbuffer_get_length is zero", mylog::LogLevel::WARN});
+
+                // mylog::GetLogger("default")->Log({"Upload fail because evbuffer_get_length is zero", mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn("Upload fail because evbuffer_get_length is zero");
                 return -1;
             }
 
@@ -108,7 +115,9 @@ namespace mystorage
             if(-1 == evbuffer_copyout(buf, (void*)content.c_str(), len))
             {
                 evhttp_send_reply(req, HTTP_INTERNAL, NULL, NULL);
-                mylog::GetLogger("default")->Log({"Upload fail because evbuffer_copyout error", mylog::LogLevel::WARN});
+
+                // mylog::GetLogger("default")->Log({"Upload fail because evbuffer_copyout error", mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn("Upload fail because evbuffer_copyout error");
                 return -1;
             }
 
@@ -141,7 +150,9 @@ namespace mystorage
             else
             {
                 evhttp_send_reply(req, HTTP_BADREQUEST, "Illengal storage type", NULL);
-                mylog::GetLogger("default")->Log({"Upload fail because illegal storage type", mylog::LogLevel::ERROR});
+
+                // mylog::GetLogger("default")->Log({"Upload fail because illegal storage type", mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("Upload fail because illegal storage type");
                 return -1;
             }
 
@@ -159,12 +170,15 @@ namespace mystorage
                 if(-1 == fu.SetContent(content.c_str(), len))
                 {
                     evhttp_send_reply(req, HTTP_INTERNAL, "server error", NULL);
-                    mylog::GetLogger("default")->Log({"Upload fail because low storage SetContent error", mylog::LogLevel::ERROR});
+
+                    // mylog::GetLogger("default")->Log({"Upload fail because low storage SetContent error", mylog::LogLevel::ERROR});
+                    mylog::GetLogger(logger_name_)->Error("Upload fail because low storage SetContent error");
                     return -1;
                 }
                 else
                 {
-                    mylog::GetLogger("default")->Log({"low storage success", mylog::LogLevel::INFO});
+                    // mylog::GetLogger("default")->Log({"low storage success", mylog::LogLevel::INFO});
+                    mylog::GetLogger(logger_name_)->Info("low storage success");
                 }
             }
             else
@@ -172,12 +186,15 @@ namespace mystorage
                 if(-1 == fu.Compress(content, Config::GetInstance().GetBundleFormat()))  // 包含了SetContent
                 {
                     evhttp_send_reply(req, HTTP_INTERNAL, "server error", NULL);
-                    mylog::GetLogger("default")->Log({"Upload fail because deep storage Compress error", mylog::LogLevel::ERROR});
+
+                    // mylog::GetLogger("default")->Log({"Upload fail because deep storage Compress error", mylog::LogLevel::ERROR});
+                    mylog::GetLogger(logger_name_)->Error("Upload fail because deep storage Compress error");
                     return -1;
                 }
                 else
                 {
-                    mylog::GetLogger("default")->Log({"deep storage success", mylog::LogLevel::INFO});
+                    // mylog::GetLogger("default")->Log({"deep storage success", mylog::LogLevel::INFO});
+                    mylog::GetLogger(logger_name_)->Info("deep storage success");
                 }
             }
 
@@ -192,7 +209,9 @@ namespace mystorage
             evhttp_add_header(req->output_headers, "Content-Type", "application/json");
 
             evhttp_send_reply(req, HTTP_OK, "Success", NULL);
-            mylog::GetLogger("default")->Log({"Upload finish", mylog::LogLevel::INFO});
+
+            // mylog::GetLogger("default")->Log({"Upload finish", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("Upload finishs");
 
             return 0;
         }
@@ -262,13 +281,15 @@ namespace mystorage
         // 在浏览器展示所有的StorageInfo
         static int ListShow(struct evhttp_request* req, void* arg)
         {
-            mylog::GetLogger("default")->Log({"ListShow()", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"ListShow()", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("ListShow()");
             
             // 获取所有的StorageInfo, 都存放在DataManager的table_中
             std::vector<StorageInfo> arry;
             if(storage_data_->GetAll(&arry) == -1)
             {
-                mylog::GetLogger("default")->Log({"ListShow() fail when load storageinfo", mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({"ListShow() fail when load storageinfo", mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("ListShow() fail when load storageinfo");
             }
 
             // 读取模板文件
@@ -300,20 +321,25 @@ namespace mystorage
             evbuffer_add(buf, (const void*)response_body.c_str(), response_body.size());
             evhttp_add_header(req->output_headers, "Content-Type", "text/html;charset=utf-8");
             evhttp_send_reply(req, HTTP_OK, NULL, NULL);
-            mylog::GetLogger("default")->Log({"ListShow() finish", mylog::LogLevel::INFO});
+
+            // mylog::GetLogger("default")->Log({"ListShow() finish", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("ListShow() finish");
 
             return 0;
         }
 
         static int ListShowForClient(struct evhttp_request* req, void* arg)
         {
-            mylog::GetLogger("default")->Log({"ClientListFiles()", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"ClientListFiles()", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("ClientListFiles()");
     
             // 获取所有的StorageInfo
             std::vector<StorageInfo> arry;
             if(storage_data_->GetAll(&arry) == -1)
             {
-                mylog::GetLogger("default")->Log({"ClientListFiles() fail when load storageinfo", mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({"ClientListFiles() fail when load storageinfo", mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("ClientListFiles() fail when load storageinfo");
+
                 // 返回错误响应
                 struct evbuffer* buf = evhttp_request_get_output_buffer(req);
                 std::string error_response = "{\"status\":\"error\",\"message\":\"Failed to load file list\"}";
@@ -343,7 +369,8 @@ namespace mystorage
             evhttp_add_header(req->output_headers, "Content-Type", "application/json;charset=utf-8");
             evhttp_send_reply(req, HTTP_OK, NULL, NULL);
             
-            mylog::GetLogger("default")->Log({"ClientListFiles() finish, returned " + std::to_string(arry.size()) + " files", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"ClientListFiles() finish, returned " + std::to_string(arry.size()) + " files", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("ClientListFiles() finish, returned " + std::to_string(arry.size()) + " files");
 
             return 0;
         }
@@ -385,7 +412,9 @@ namespace mystorage
             // 如果是深度存储，压缩过的，就得先解压，把它放到low_storage中
             if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos)
             {
-                mylog::GetLogger("default")->Log({("uncompress: " + download_path), mylog::LogLevel::INFO});
+                // mylog::GetLogger("default")->Log({("uncompress: " + download_path), mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("uncompress: " + download_path);
+
                 FileUtil fu(download_path);
                 /*
                     info.url_: /download/pcre-8.45.zip   =>  pcre-8.45.zip
@@ -406,18 +435,24 @@ namespace mystorage
                 */
                 fu.UnCompress(download_path);  // 把fu指向文件的内容解压后写入dirCreate执行文件的内容             
             }
-            mylog::GetLogger("default")->Log({("request download_path: " + download_path), mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({("request download_path: " + download_path), mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("request download_path: " + download_path);
+
             FileUtil fu(download_path);
             // deep storage中压缩文件存在，但是解压后的文件不存在，即压缩的时候出错
             if(-1 == fu.Exists() && info.storage_path_.find("deep_storage") != std::string::npos)
             {   
-                mylog::GetLogger("default")->Log({"evhttp_send_reply: 500 - uncompress failed", mylog::LogLevel::INFO});
+                // mylog::GetLogger("default")->Log({"evhttp_send_reply: 500 - uncompress failed", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("evhttp_send_reply: 500 - uncompress failed");
+
                 evhttp_send_reply(req, HTTP_INTERNAL, NULL, NULL);
             }
             // low storage中文件不存在
             else if(-1 == fu.Exists() && info.storage_path_.find("low_storage") == std::string::npos)
             {
-                mylog::GetLogger("default")->Log({"evhttp_send_reply: 400 - bad request, file not exists", mylog::LogLevel::INFO});
+                // mylog::GetLogger("default")->Log({"evhttp_send_reply: 400 - bad request, file not exists", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("evhttp_send_reply: 400 - bad request, file not exists");
+
                 evhttp_send_reply(req, HTTP_BADREQUEST, "file not exist", NULL);
             }   
 
@@ -431,14 +466,17 @@ namespace mystorage
                 if(old_etag == GetETag(info))
                 {
                     retrans = true;
-                    mylog::GetLogger("default")->Log({(download_path + " need breakpoint continuous transmission"), mylog::LogLevel::INFO});
+                    // mylog::GetLogger("default")->Log({(download_path + " need breakpoint continuous transmission"), mylog::LogLevel::INFO});
+                    mylog::GetLogger(logger_name_)->Info(download_path + " need breakpoint continuous transmission");
                 }
             }
 
             // 读取文件数据，放入rsp.body中
             if(-1 == fu.Exists())
             {
-                mylog::GetLogger("default")->Log({(download_path + " not exists"), mylog::LogLevel::WARN});
+                // mylog::GetLogger("default")->Log({(download_path + " not exists"), mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn(download_path + " not exists");
+
                 download_path += "not exist";
                 evhttp_send_reply(req, 404, download_path.c_str(), NULL);
                 return -1;
@@ -447,14 +485,18 @@ namespace mystorage
             int fd = open(download_path.c_str(), O_RDONLY);
             if(-1 == fd)
             {
-                mylog::GetLogger("default")->Log({("open file error: " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({("open file error: " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("open file error: " + download_path + " -- " + strerror(errno));
+
                 evhttp_send_reply(req, HTTP_INTERNAL, strerror(errno), NULL);
                 return -1;
             }
             
             if(-1 == evbuffer_add_file(outbuf, fd, 0, fu.FileSize()))
             {
-                mylog::GetLogger("default")->Log({("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno));
+
                 evhttp_send_reply(req, HTTP_INTERNAL, strerror(errno), NULL);
                 return -1;
             }
@@ -466,12 +508,16 @@ namespace mystorage
             if(false == retrans)
             {
                 evhttp_send_reply(req, HTTP_OK, "Success", NULL);
-                mylog::GetLogger("default")->Log({"evhttp_send_reply: HTTP_OK", mylog::LogLevel::INFO});
+
+                // mylog::GetLogger("default")->Log({"evhttp_send_reply: HTTP_OK", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("evhttp_send_reply: HTTP_OK");
             }
             else
             {
                 evhttp_send_reply(req, 206, "breakpoint continuous transmission", NULL);
-                mylog::GetLogger("default")->Log({"evhttp_send_reply: 206", mylog::LogLevel::INFO});
+
+                // mylog::GetLogger("default")->Log({"evhttp_send_reply: 206", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("evhttp_send_reply: 206");
             }
             if(download_path != info.storage_path_)
             {
@@ -483,7 +529,8 @@ namespace mystorage
         // 删除文件
         static int Remove(struct evhttp_request* req, void* arg)
         {
-            mylog::GetLogger("default")->Log({"Remove start", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"Remove start", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("Remove start");
 
             struct evbuffer* buf = evhttp_request_get_input_buffer(req);
 
@@ -492,12 +539,15 @@ namespace mystorage
             // 解码文件名
             filename = base64_decode(filename);
 
-            mylog::GetLogger("default")->Log({"The file: " + filename + " will be remove", mylog::LogLevel::INFO});
+            // mylog::GetLogger("default")->Log({"The file: " + filename + " will be remove", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("The file: " + filename + " will be remove");
 
             mystorage::StorageInfo info;
             if(storage_data_->GetOneByURL("/download/" + filename, &info) == -1)
             {
-                mylog::GetLogger("default")->Log({"file is not exist", mylog::LogLevel::WARN});
+                // mylog::GetLogger("default")->Log({"file is not exist", mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn("file is not exist");
+
                 evhttp_send_reply(req, HTTP_OK, "0", NULL);
                 return -1;
             }
@@ -514,7 +564,9 @@ namespace mystorage
             // evhttp_add_header(req->output_headers, "Content-Type", "application/json");
 
             evhttp_send_reply(req, HTTP_OK, NULL, NULL);
-            mylog::GetLogger("default")->Log({"Remove success", mylog::LogLevel::INFO});
+
+            // mylog::GetLogger("default")->Log({"Remove success", mylog::LogLevel::INFO});
+            mylog::GetLogger(logger_name_)->Info("Remove success");
 
             return 0;
         }
@@ -522,12 +574,16 @@ namespace mystorage
         // 让服务端的线程池尝试连接远程服务器
         static int Reload(struct evhttp_request* req, void* arg)
         {
-            mylog::GetLogger("default")->Log({"Attempt to re-establish the connection with the remote server ", mylog::LogLevel::WARN});
+            // mylog::GetLogger("default")->Log({"Attempt to re-establish the connection with the remote server ", mylog::LogLevel::WARN});
+            mylog::GetLogger(logger_name_)->Warn("Attempt to re-establish the connection with the remote server");
+
             mylog::ThreadPool* threadpool_ = (mylog::ThreadPool*)arg;
 
             if(threadpool_->ClientActiveNumber() > 0)
             {
-                mylog::GetLogger("default")->Log({"Re-establish failed because the connection already exists", mylog::LogLevel::WARN});
+                // mylog::GetLogger("default")->Log({"Re-establish failed because the connection already exists", mylog::LogLevel::WARN});
+                mylog::GetLogger(logger_name_)->Warn("Re-establish failed because the connection already exists");
+
                 return -1;
             }
             // 重启线程池
@@ -535,7 +591,10 @@ namespace mystorage
             
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             std::pair<std::string, mylog::LogLevel> threadpool_connected_message = threadpool_->startup();
-            mylog::GetLogger("default")->Log(threadpool_connected_message);
+            
+            // mylog::GetLogger("default")->Log(threadpool_connected_message);
+            mylog::GetLogger(logger_name_)->Info(threadpool_connected_message.first);
+
             return 0;
         }
 
@@ -557,7 +616,9 @@ namespace mystorage
             base_ = event_base_new();
             if(!base_)
             {   
-                mylog::GetLogger("default")->Log({"Initialize terminate when event_base_new", mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({"Initialize terminate when event_base_new", mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("Initialize terminate when event_base_new");
+
                 return -1;
             }
 
@@ -568,7 +629,9 @@ namespace mystorage
             httpd_ = evhttp_new(base_);
             if(evhttp_bind_socket(httpd_, "0.0.0.0", server_port_) != 0)
             {
-                mylog::GetLogger("default")->Log({"Initialize terminate when evhttp_bind_socket", mylog::LogLevel::ERROR});
+                // mylog::GetLogger("default")->Log({"Initialize terminate when evhttp_bind_socket", mylog::LogLevel::ERROR});
+                mylog::GetLogger(logger_name_)->Error("Initialize terminate when evhttp_bind_socket");
+
                 return -1;
             }
             evhttp_set_gencb(httpd_, GenHandler, (void*)threadpool_);
@@ -582,15 +645,19 @@ namespace mystorage
             int ret = 0;
             if(base_)
             {
-                mylog::GetLogger("default")->Log({"Power up storage server", mylog::LogLevel::INFO});
+                // mylog::GetLogger("default")->Log({"Power up storage server", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("Power up storage server");
+
                 // 启动事件循环
                 if(-1 == event_base_dispatch(base_))
                 {
-                    mylog::GetLogger("default")->Log({"Power up fail when event_base_dispatch", mylog::LogLevel::ERROR});
-                    mylog::GetLogger("default")->Log({"Power off storage server", mylog::LogLevel::INFO});
+                    // mylog::GetLogger("default")->Log({"Power up fail when event_base_dispatch", mylog::LogLevel::ERROR});
+                    mylog::GetLogger(logger_name_)->Error("Power up fail when event_base_dispatch");
                     ret = -1;
                 }
-                mylog::GetLogger("default")->Log({"Power off storage server", mylog::LogLevel::INFO});
+
+                // mylog::GetLogger("default")->Log({"Power off storage server", mylog::LogLevel::INFO});
+                mylog::GetLogger(logger_name_)->Info("Power off storage server");
             }
             if(base_)
             {

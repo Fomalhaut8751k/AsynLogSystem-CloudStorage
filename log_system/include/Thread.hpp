@@ -17,17 +17,21 @@ namespace mylog
     private:
         using t_uint = unsigned int;
         using ThreadFunc = std::function<void(int, Thread*)>;
+        using WaitFunc = std::function<void()>;
         
         t_uint threadId_;     // 线程号
         ThreadFunc threadfunc_;      // 线程函数
+        WaitFunc waitfunc_;          // 唤醒函数
         static t_uint generateId_;      
 
         std::atomic_bool clientactive_;  
 
     public:
-        Thread(ThreadFunc threadfunc)
+        Thread(ThreadFunc threadfunc, WaitFunc waitfunc)
         {
             threadfunc_ = threadfunc;
+            waitfunc_ = waitfunc;
+
             threadId_ = generateId_++;
             clientactive_ = true;
         }
@@ -44,7 +48,7 @@ namespace mylog
             return threadId_;
         }        
 
-        void Deactivate(){ clientactive_ = false; }
+        void Deactivate(){ clientactive_ = false; waitfunc_(); }  // client退出后，唤醒线程
 
         bool ClientActiveStatus() const { return clientactive_; }
     };

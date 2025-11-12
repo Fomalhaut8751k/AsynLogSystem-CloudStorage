@@ -40,7 +40,7 @@ namespace mylog
             return config;
         }
 
-        std::pair<std::string, mylog::LogLevel> ReadConfig()
+        std::pair<std::string, mylog::LogLevel> ReadConfig(const char* config_load_path = "../log_system/include/LogSystem.conf")
         {
             // fs::path current_path = fs::current_path();
             // std::cout << "当前工作目录: " << current_path << std::endl;
@@ -49,11 +49,11 @@ namespace mylog
             std::ifstream file_;
             struct stat st;
             // 如果配置文件不存在
-            if(stat("../log_system/include/LogSystem.conf", &st) != 0)
+            if(stat(config_load_path, &st) != 0)
             { 
                 return {"the LogSystem.conf is not existed", mylog::LogLevel::ERROR};
             }
-            file_.open("../log_system/include/LogSystem.conf", std::ios::ate);
+            file_.open(config_load_path, std::ios::ate);
             if(!file_.is_open()) 
             { 
                 return {"the LogSystem.conf is not open", mylog::LogLevel::ERROR};

@@ -72,11 +72,7 @@ namespace mylog
         };
 
         void flush(const std::string& formatted_log)
-        {
-            // std::cerr << "有日志被写入: " << file_path_ << "中" << std::endl;
-
-            // std::cerr << formatted_log << std::endl;
-            
+        {            
             file_ << formatted_log << std::endl;
         }
 

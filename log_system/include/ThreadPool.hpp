@@ -50,6 +50,11 @@ namespace mylog
         // 线程池启动情况
         std::atomic_bool ThreadPoolRunning_;
 
+        void waitFunc()
+        {
+            notEmpty_.notify_all();
+        }
+
         void threadFunc(tp_uint threadid, Thread* thread_)
         {
             // 创建客户端
@@ -152,7 +157,10 @@ namespace mylog
 
             initThreadSize_ = mylog::Config::GetInstance().GetInitThreadSize();
             threadSizeThreshHold_ = mylog::Config::GetInstance().GetThreadSizeThreshhold();
+
             logQueMaxThreshHold_ = mylog::Config::GetInstance().GetLogQueMaxThreshhold();
+
+            // std::cerr << serverAddr_ << " " << serverPort_ << " " << initThreadSize_ << " " << threadSizeThreshHold_ << " " << logQueMaxThreshHold_ << std::endl;
 
             curThreadSize_ = 0;
             logSize_ = 0;
@@ -171,7 +179,8 @@ namespace mylog
             for(int i = 0; i < initThreadSize_; i++)
             {
                 std::unique_ptr<Thread> thread_ = std::make_unique<Thread>(
-                    std::bind(&ThreadPool::threadFunc, this, std::placeholders::_1, std::placeholders::_2)
+                    std::bind(&ThreadPool::threadFunc, this, std::placeholders::_1, std::placeholders::_2),
+                    std::bind(&ThreadPool::waitFunc, this)
                 );
 
                 int threadid_ = thread_.get()->getId();
@@ -204,7 +213,9 @@ namespace mylog
             // 如果当前队列已经满了,就等待队列为空，或者超时，如果是因为队列空唤醒的，则可以执行接下来的提交任务操作，否则视为提交失败
             if(!notFull_.wait_for(lock, 
                                     std::chrono::seconds(10),           // 超时
-                                    [this]()->bool{ return logSize_ < logQueMaxThreshHold_;}) 
+                                    [this]()->bool{ 
+                                        return logSize_ < logQueMaxThreshHold_;
+                                    }) 
             ) 
             {   // 如果是超时返回的，视为提交失败
                 std::cerr << "task queue is full, submit task fail." << std::endl;

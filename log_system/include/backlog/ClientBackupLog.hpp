@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <semaphore>
 
 // #include "../ThreadPool.hpp"
 #include "../Thread.hpp"
@@ -103,7 +104,6 @@ public:
         std::thread loop([&]()->void{ 
             ret = event_base_dispatch(base_);
             // 如果远程服务器关机了，连接断了，事件循环就会退出
-            // std::cerr << "pdcHelloWorld" << std::endl;
             thread_->Deactivate();
             Connecting_ = false;
         });

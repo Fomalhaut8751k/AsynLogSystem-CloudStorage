@@ -567,7 +567,28 @@
             线程`Thread`类设置一个成员变量`clientactive_`来指示`Client`的连接情况(默认为`true`)，同时提供一个对外(对`Client`)的接口，可以把该标志置为`false`。`Client`创建的时候接受了线程`Thread`的普通指针作为成员变量，当`client`的事件循环因为远程服务器的断开而退出后，就会立即通过`Thread`指针调用函数把`clientactive_`设置为false。因此，在当前场景(`Client`的事件循环退出但是`Thread`的线程函数还在执行)下，管理员检测到远程服务器正常启动，就通知线程池重连。
 
     
+<br>
+
+21. 2025.10.29
+
+- 问题15
+
+    在线程池和远程服务器处于连接状态下，突然关闭远程服务器，正常情况4个线程的`Client`都会断开连接，在`gdb`中应该能看到有4个线程`exited`的消息，但是有时候只有2个`exited`的消息。
 
     
+<br>
 
-    
+22. 2025.11.5
+
+- 问题16
+
+    异步日志系统析构的时候可能会卡住，有时候还会丢失日志。这个问题发生在 `AsyncWorker` 的析构时。如果 `~AsyncWorker()` 调用时还有很多用户在互斥锁外等待，那么析构函数中，把`ExitLabel_` 置为 `true` 并且通知消费者和生产者，如果生产者和消费者相继抢到锁，就会依次退出，从而完成 `AsyncWorker()` 的析构，于是就有很多的消息没有处理。
+
+    通过一个标志 `ProhibitSummbitLabel_` 和一个计数 `user_current_count_`,  `~AsyncWorker()`调用时第一个阶段，先把 `ProhibitSummbitLabel_` 设置为 `true`，用户调用 `ReadFromUser()` 想要提交日志时就会直接退出，而那些在 `ProhibitSummbitLabel_` 设置为 `true` 之前就进来的不受印象。每进来一个用户就把 `user_current_count_` 加一，提交完退出就减一。之后等待，等待 `user_current_count_` 变为0，之后第二阶段在分别关闭生产者和消费者。
+
+
+<br>
+
+23. 2025.11.12
+
+    新增效果，`Debug`时能够打印对应的文件名和执行所在行

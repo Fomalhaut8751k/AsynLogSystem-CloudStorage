@@ -26,6 +26,7 @@ protected:
 
     mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
 
+
 public:
     AbstractAsyncLogger(): threadpool_(nullptr){}
     virtual ~AbstractAsyncLogger() = default;
@@ -57,20 +58,23 @@ public:
     }
 
     // 将消息处理为Debug类型的日志并发送
-    void Debug(const std::string& unformatted_message)  // 调试信息
+    void Debug(const std::string& unformatted_message, const char* FILE = __FILE__, int LINE = __LINE__)  // 调试信息
     {
         // 先格式化日志信息
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::DEBUG);  // message.hpp
-        unsigned int formatted_message_length = formatted_message.length();
+        const int formatted_message_length = formatted_message.length();
 
         // 如果消息等级过低，就不写入缓冲区
         if(level_ > mylog::LogLevel::DEBUG)
         {
             return;
         }
+        char buf[256];
+        snprintf(buf, sizeof(buf), ", __FILE__: %s, __LINE__: %d", FILE, LINE);  // 添加相应的调试信息
+        std::string final_message = formatted_message + buf;
 
-        // 把信息写到worker_的buffer当中
-        worker_->readFromUser(formatted_message, formatted_message_length);
+        // 把最终信息写到worker_的buffer当中
+        worker_->readFromUser(final_message, final_message.length());
         
     }
 
@@ -121,12 +125,10 @@ public:
             return;
         }
 
-        // 把error级别的日志发送到服务器中,确保先连接上了
-        // if(threadpool_->Connected())
-        // {
-        //     threadpool_->submitLog(formatted_message);
-        // }  
-        threadpool_->submitLog(formatted_message);
+        if(threadpool_)
+        {
+            threadpool_->submitLog(formatted_message);
+        }
 
         // 把信息写到worker_的buffer当中
         worker_->readFromUser(formatted_message, formatted_message_length);
@@ -145,13 +147,10 @@ public:
             return;
         }
 
-        // 把fatal级别的日志发送到服务器中,确保先连接上了
-        // if(threadpool_->Connected())
-        // {
-        //     threadpool_->submitLog(formatted_message);
-        // }  
-        threadpool_->submitLog(formatted_message);
-
+        if(threadpool_)
+        {
+            threadpool_->submitLog(formatted_message);
+        }
         // 把信息写到worker_的buffer当中
         worker_->readFromUser(formatted_message, formatted_message_length);
     }

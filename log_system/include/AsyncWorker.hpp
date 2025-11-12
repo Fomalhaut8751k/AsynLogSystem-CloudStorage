@@ -54,15 +54,14 @@ namespace mylog
         LOG_FUNC log_func_;
         ExpandMode expand_mode_;
 
+        bool ProhibitSummbitLabel_;
         bool ExitLabel_;
 
         bool ExitProductorLabel_;
         bool ExitConsumerLabel_;
 
-        // // 测试功能
-        // std::chrono::_V2::steady_clock::time_point start_time_;  
-        // std::atomic_int cnt;
-        // std::atomic_int pdc;
+        // 设置一个计数，只有要用户调用提交函数就+1，提交完走人后就-1
+        std::atomic_int user_current_count_;   
 
 
     public:
@@ -75,7 +74,7 @@ namespace mylog
             label_data_ready_(false),
             current_effective_expansion_times(-1),
 
-            // start_time_(std::chrono::steady_clock::now()),
+            user_current_count_(0),
 
             expand_mode_(ExpandMode::HARDEXPANSION)
 
@@ -83,27 +82,26 @@ namespace mylog
             ExitLabel_ = false;
             ExitProductorLabel_ = false;
             ExitConsumerLabel_ = false;
+            ProhibitSummbitLabel_ = false;
 
             effective_expansion_times = mylog::Config::GetInstance().GetEffectiveExpansionTimes();
 
             effective_expansion_times = 5;
-
-            // pdc = 0;
-            // cnt = 0;
         }
 
         ~AsyncWorker()
         {
             std::unique_lock<std::mutex> lock(Mutex_);
-            // std::cerr << "~AsyncWorker()" << std::endl;
-            // 终止生产者和消费者线程
+            
+            // 第一阶段，关闭用户提交日志窗口，等待剩余日志处理完成
+            ProhibitSummbitLabel_ = true;
+            cond_exit_.wait(lock, [&]()->bool { return user_current_count_ == 0; } );
+
+            // 第二阶段，通知生产者和消费者，等待消费者和生产者关闭
             ExitLabel_ = true;
-            // 通知生产者和消费者
             cond_productor_.notify_all();
             cond_consumer_.notify_all();
-
-            // 生产者和消费者中最后一个结束的时候的通知会让这里从等待到阻塞
-            cond_exit_.wait(lock, [this]()->bool { return ExitProductorLabel_ && ExitConsumerLabel_;});  
+            cond_exit_.wait(lock, [this]()->bool { return ExitProductorLabel_ && ExitConsumerLabel_;});  // 生产者和消费者中最后一个结束的时候的通知会让这里从等待到阻塞
         }
 
         // 启动
@@ -126,15 +124,7 @@ namespace mylog
                         return label_consumer_ready_ && label_data_ready_ || ExitLabel_;
                     }
                 );
-
-                // 从生产者开始处理第一条日志开始:
-                // if(pdc == 0) 
-                // {
-                //     start_time_ = std::chrono::steady_clock::now();
-                //     pdc = 1;
-                // }
-                
-
+ 
                 if(ExitLabel_)
                 {
                     ExitProductorLabel_ = true;
@@ -214,14 +204,6 @@ namespace mylog
                     log_func_(message_formatted);  
                 }
 
-                // // 如果处理完后发现事件大于1秒了就输出
-                // if(pdc == 1 && std::chrono::steady_clock::now() - start_time_ > std::chrono::seconds(1))
-                // {
-                //     std::cerr << "1秒内处理了: " << cnt << " 条日志" << std::endl;
-                //     pdc = 2;
-                // }
-                // std::cerr << cnt << std::endl;
-
                 buffer_consumer_->clear();
                 // 逻辑上的调整,移动到此处
                 label_consumer_ready_ = true;
@@ -231,8 +213,13 @@ namespace mylog
         // 对外提供一个写入的接口
         void readFromUser(std::string message, unsigned int buffer_length)
         {
+            // 如果禁止提交，已经进来排队的就等处理，如果刚进来的就劝退
+            if(ProhibitSummbitLabel_) { return; }
             const char* buffer = message.c_str();
-            // std::cerr << "当前日志大小: " << buffer_length << std::endl;
+
+            user_current_count_ += 1;
+
+            // std::cout << "user_current_count_: " << user_current_count_ << std::endl;
             std::unique_lock<std::mutex> lock(Mutex_);
             {
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
@@ -280,6 +267,13 @@ namespace mylog
 
                 label_data_ready_ = true;  // 设置标志
                 cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了
+
+                user_current_count_ -= 1;
+                // 如果是最后一个用户，就提醒析构函数
+                if(ProhibitSummbitLabel_ && user_current_count_ == 0)
+                {
+                    cond_exit_.notify_all();
+                }
             } 
         }
     };

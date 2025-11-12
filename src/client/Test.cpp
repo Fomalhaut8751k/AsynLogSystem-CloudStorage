@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     
-    StorageClient client("http://172.30.173.224:8081");
+    StorageClient client("http://172.30.173.126:8081");
     std::string command = argv[1];
     
     if (command == "upload" && argc >= 3) 
