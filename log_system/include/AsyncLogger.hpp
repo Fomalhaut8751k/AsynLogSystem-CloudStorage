@@ -16,19 +16,21 @@
 class AbstractAsyncLogger
 {
 protected:
-    std::shared_ptr<mylog::AsyncWorker> worker_;
-    std::unique_ptr<mylog::LoggerMessage> formatter_;
+    // std::shared_ptr<mylog::AsyncWorker> worker_;
+    
+
+    mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
 
     mylog::LogLevel level_;                       // 输入日志的最低级别
 
     std::string logger_name_;                     // 日志器的名称
     std::shared_ptr<mylog::Flush> flush_;         // 日志输出器     
-
-    mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
-
+    // 应该先创建Flush，再创建AsyncWorker，这样才能先析构AsyncWorker，再析构Flush
+    std::shared_ptr<mylog::AsyncWorker> worker_;
+    std::unique_ptr<mylog::LoggerMessage> formatter_;
 
 public:
-    AbstractAsyncLogger(): threadpool_(nullptr){}
+    AbstractAsyncLogger(): threadpool_(nullptr),formatter_(std::make_unique<mylog::LoggerMessage>()){}
     virtual ~AbstractAsyncLogger() = default;
 
     virtual void setLevel(mylog::LogLevel) = 0;
@@ -53,8 +55,13 @@ public:
 
     // 提交日志
     void log(std::string formatted_message)
-    {
-        flush_->flush(formatted_message);
+    {   
+        if(flush_){
+            flush_->flush(formatted_message);
+        }
+        else{
+            std::cerr << "flush_ is nullptr" << std::endl;
+        }
     }
 
     // 将消息处理为Debug类型的日志并发送
@@ -82,6 +89,7 @@ public:
     void Info(const std::string& unformatted_message)  // 普通信息
     {
         // 先格式化日志信息
+        // std::cerr << formatter_.get() << std::endl;
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::INFO);  // message.hpp
         unsigned int formatted_message_length = formatted_message.length();
 
@@ -200,7 +208,7 @@ namespace mylog
         AsyncLogger():AbstractAsyncLogger(){}
         ~AsyncLogger()
         {
-            
+            std::cerr << "~AsyncLogger()" << std::endl;
         }
 
         void setLevel(mylog::LogLevel level)

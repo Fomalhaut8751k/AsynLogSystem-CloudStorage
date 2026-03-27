@@ -34,6 +34,7 @@ namespace mylog
         using LOG_FUNC = std::function<void(std::string)>;
 
         std::mutex Mutex_;
+        std::mutex Mutex_User;
 
         std::condition_variable cond_productor_;  // 用于生产者的同步通信
         std::condition_variable cond_consumer_;   // 用于消费者的同步通信
@@ -54,7 +55,7 @@ namespace mylog
         LOG_FUNC log_func_;
         ExpandMode expand_mode_;
 
-        bool ProhibitSummbitLabel_;
+        std::atomic_bool ProhibitSummbitLabel_;
         bool ExitLabel_;
 
         bool ExitProductorLabel_;
@@ -77,7 +78,7 @@ namespace mylog
             user_current_count_(0),
 
             expand_mode_(ExpandMode::HARDEXPANSION)
-
+            // expand_mode_(ExpandMode::SOFTEXPANSION)
         {
             ExitLabel_ = false;
             ExitProductorLabel_ = false;
@@ -91,17 +92,24 @@ namespace mylog
 
         ~AsyncWorker()
         {
-            std::unique_lock<std::mutex> lock(Mutex_);
+            {   // 这是保证剩下用户全部提交的，最后一个用户提交后就会通知
+                std::unique_lock<std::mutex> lock(Mutex_User);
+                // 第一阶段，关闭用户提交日志窗口，等待剩余日志处理完成
+                ProhibitSummbitLabel_ = true;
+                cond_exit_.wait(lock, [&]()->bool { return user_current_count_ == 0; } );
+            }
             
-            // 第一阶段，关闭用户提交日志窗口，等待剩余日志处理完成
-            ProhibitSummbitLabel_ = true;
-            cond_exit_.wait(lock, [&]()->bool { return user_current_count_ == 0; } );
-
-            // 第二阶段，通知生产者和消费者，等待消费者和生产者关闭
-            ExitLabel_ = true;
-            cond_productor_.notify_all();
-            cond_consumer_.notify_all();
-            cond_exit_.wait(lock, [this]()->bool { return ExitProductorLabel_ && ExitConsumerLabel_;});  // 生产者和消费者中最后一个结束的时候的通知会让这里从等待到阻塞
+            {   // 这是保证生产者和消费者处理完所有日志的
+                std::unique_lock<std::mutex> lock(Mutex_);
+                // 第二阶段，通知生产者和消费者，等待消费者和生产者关闭
+                ExitLabel_ = true;
+                cond_productor_.notify_all();
+                cond_consumer_.notify_all();
+                cond_exit_.wait(lock, [this]()->bool { 
+                    return ExitProductorLabel_ && ExitConsumerLabel_;
+                });  // 生产者和消费者中最后一个结束的时候的通知会让这里从等待到阻塞
+            }
+            std::cout << "~AsyncWorker()" << std::endl;
         }
 
         // 启动
@@ -116,39 +124,35 @@ namespace mylog
 
         void productorTask()  // 生产者线程
         {
-            while(!ExitLabel_)
-            {
+            // while(!ExitLabel_ ){
+            while(1){
                 std::unique_lock<std::mutex> lock(Mutex_);
                 // 只要满足消费者已就绪，且用户发来消息，才会唤醒生产者
                 cond_productor_.wait(lock, [&]()->bool{
                         return label_consumer_ready_ && label_data_ready_ || ExitLabel_;
                     }
                 );
- 
-                if(ExitLabel_)
-                {
+                if(buffer_productor_->getEmpty() && ExitLabel_){  // 确保退出的时候缓冲区内没有数据
+                    std::cout << "1退出时，生产者缓冲区是否为空: " << buffer_productor_->getEmpty() << std::endl;
                     ExitProductorLabel_ = true;
                     cond_exit_.notify_all();
                     return;
                 }
 
-                // std::cerr << "即将发生交换, effect_expansion_times: " << effective_expansion_times << std::endl;
-
                 // 交换前对扩容计数的处理，此时可以判断扩容的部分是否被使用到
-                if(current_effective_expansion_times > 0)   // 当前是扩容状态
-                {   // 如果扩容的部分没有被使用到
-                    if(buffer_productor_->getIdleExpansionSpace()) 
-                    {   // 计数减一
-                        current_effective_expansion_times--;
+                if(current_effective_expansion_times > 0){   // 当前是扩容状态
+                    // 如果扩容的部分没有被使用到
+                    if(buffer_productor_->getIdleExpansionSpace()) {   
+                        current_effective_expansion_times--;  // 计数减一
                     }
-                    else  // 如果使用到了
-                    {   // 刷新计数
-                        current_effective_expansion_times = effective_expansion_times;
+                    else { // 如果使用到了
+                        current_effective_expansion_times = effective_expansion_times;  // 刷新计数
                     }
                 }
 
-                if(!buffer_productor_->getEmpty())
-                {
+                // 交换缓冲区
+                if(!buffer_productor_->getEmpty()){
+                    std::unique_lock<std::mutex> lock_swap(Mutex_User);
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
                     buffer_consumer_ = tmp_buffer_controler;
@@ -161,53 +165,129 @@ namespace mylog
                     // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
                     cond_writable_.notify_all();
                 }
-                else  // 如果醒来发现buffer没有消息，就重新循环，此时
-                    // 消费者没有被生产者notify_all()还是等待，不会抢互斥锁
-                {
+                else{  // 如果醒来发现buffer没有消息，就重新循环，此时消费者没有被生产者notify_all()还是等待，不会抢互斥锁
                     label_data_ready_ = false;
                 }
 
                 // 交换后对扩容状态的处理
-                if(current_effective_expansion_times == 0)
-                {   // 表示异步工作者认为已经长时间没有使用到扩容的空间，应该释放掉
+                if(current_effective_expansion_times == 0) {
+                    // 表示异步工作者认为已经长时间没有使用到扩容的空间，应该释放掉
                     buffer_productor_->scaleDown();  
                     buffer_consumer_->scaleDown();  // 由于生产者判断了交换前的情况，因此消费者接手它的空间后不用担心缩容对数据的影响
-                    current_effective_expansion_times = - 1;
+                    current_effective_expansion_times = -1;
                     // std::cerr << "扩容空间长时间未使用，已回到: " << buffer_productor_->getSize() << std::endl;
                 }
             }
-            
+            // ExitProductorLabel_ = true;
+            // cond_exit_.notify_all();
+            // std::cout << "2退出时，生产者缓冲区是否为空: " << buffer_productor_->getEmpty() << std::endl;
         }
 
         void consumerTask()   // 消费者线程
         { 
-            while(!ExitLabel_)
+            // while(!(ExitLabel_ && ExitProductorLabel_))  // 如果AsyncWorker已经开始析构，并且生产者线程已经结束
+            // 消费者唯一的出口就是从等待哪里出去
+            while(1)
             {
-                std::unique_lock<std::mutex> lock(Mutex_);
-                // label_consumer_ready_ = true;
-                cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
-                // 只要生产者一声令下，消费者就干活
-                cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
-                if(ExitLabel_)
-                {
-                    ExitConsumerLabel_ = true;
-                    cond_exit_.notify_all();
-                    return;
-                }
+                /* 第一版：把日志从消费者缓冲区读出，和把消息输出，都放在互斥锁中 */
+                /*
+                    std::unique_lock<std::mutex> lock(Mutex_);
 
-                label_consumer_ready_ = false;
+                    // label_consumer_ready_ = true;
+                    cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
+                    // 只要生产者一声令下，消费者就干活
+                    cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
+                    if(ExitLabel_)
+                    {
+                        ExitConsumerLabel_ = true;
+                        cond_exit_.notify_all();
+                        return;
+                    }
+
+                    label_consumer_ready_ = false;
+                    if(!buffer_consumer_){
+                        // std::cerr << "buffer_consumer_ is nullptr" << std::endl;
+                        continue;
+                    }
+                    for(std::string message_formatted: buffer_consumer_->read())
+                    {
+                        // 把日志消息发送到指定的位置
+                        // cnt++;
+                        log_func_(message_formatted);  
+                    }
+
+                    buffer_consumer_->clear();
+                    // 逻辑上的调整,移动到此处
+                    label_consumer_ready_ = true;
+                */
                 
-                for(std::string message_formatted: buffer_consumer_->read())
-                {
-                    // 把日志消息发送到指定的位置
-                    // cnt++;
-                    log_func_(message_formatted);  
-                }
+                /* 第二版，先把日志读到一个容器当中，然后释放锁，再进行输出 */
+                /*
+                    std::vector<std::string> message_formatted_vector;
+                    {
+                        std::unique_lock<std::mutex> lock(Mutex_);
+                        cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
+                        // 只要生产者一声令下，消费者就干活
+                        cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
+                        if(ExitLabel_){
+                            ExitConsumerLabel_ = true;
+                            cond_exit_.notify_all();
+                            return;
+                        }
 
-                buffer_consumer_->clear();
-                // 逻辑上的调整,移动到此处
-                label_consumer_ready_ = true;
+                        label_consumer_ready_ = false;
+                        if(!buffer_consumer_) continue;
+                        // message_formatted_vector = buffer_consumer_->read();
+                        buffer_consumer_->read(message_formatted_vector);
+                        buffer_consumer_->clear();
+                        label_consumer_ready_ = true;
+                    }
+                    // 日志输出需要一定时间，这里缓冲区的数据已经读出来了，可以一边输出数据，一边让生产者交换
+                    for(std::string message_formatted: message_formatted_vector){  // 把日志消息发送到指定的位置
+                        log_func_(message_formatted);  
+                    }
+                */
+                
+                /* 第三版，优化磁盘IO次数 */
+                std::string message_formatted;
+                {
+                    std::unique_lock<std::mutex> lock(Mutex_);
+                    cond_productor_.notify_all();  // 通知生产者现在消费者空闲状态
+                    // 只要生产者一声令下，消费者就干活
+                    cond_consumer_.wait(lock, [&]()->bool { return ExitLabel_ || !label_consumer_ready_;});
+                    if(buffer_consumer_->getEmpty() && ExitLabel_ && ExitProductorLabel_){
+                        std::cout << "退出时，消费者缓冲区是否为空: " << buffer_consumer_->getEmpty() << std::endl;
+                        ExitConsumerLabel_ = true;
+                        cond_exit_.notify_all();
+                        return;
+                    }
+
+                    label_consumer_ready_ = false;
+                    if(!buffer_consumer_) continue;
+                    // message_formatted_vector = buffer_consumer_->read();
+                    if(!buffer_consumer_->getEmpty()){
+                        message_formatted = buffer_consumer_->read(0);
+                    }
+                    buffer_consumer_->clear();
+                    label_consumer_ready_ = true;
+                }
+                // 一条条输出日志
+                /*
+                    for(std::string message_formatted: message_formatted_vector){  // 把日志消息发送到指定的位置
+                        log_func_(message_formatted);  
+                    }
+                */
+                // 一次性将所有日志输出
+                log_func_(message_formatted);
             }
+            // 这里不需要额外的处理，因为在日志输出阶段是没有互斥的，因此可能生产者在这个时候交换了缓冲区
+            // 并声明自己已经结束了，消费者就可能因为条件不满足而不再进入循环从而结束
+            /*
+                ExitConsumerLabel_ = true;
+                cond_exit_.notify_all();
+                std::cout << "2退出时，消费者缓冲区是否为空: " << buffer_consumer_->getEmpty() << std::endl;
+            */
+            
         }
 
         // 对外提供一个写入的接口
@@ -218,63 +298,49 @@ namespace mylog
             const char* buffer = message.c_str();
 
             user_current_count_ += 1;
-
-            // std::cout << "user_current_count_: " << user_current_count_ << std::endl;
-            std::unique_lock<std::mutex> lock(Mutex_);
+            /*
+                理论上不应该使用和消费者一样的mutex，因为生产者写入数据和消费者处理数据不能
+                同时进行，就没有了所谓的异步。
+            */
             {
+                std::unique_lock<std::mutex> lock(Mutex_User);  
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
+                unsigned int buffer_size = 0;
                 cond_writable_.wait(lock, [&]()->bool{ 
-                    // 软扩容，日志大小大于缓冲区整个大小时，增加两倍该日志大小的容量
-                    if(expand_mode_ == ExpandMode::SOFTEXPANSION)
-                    {   
-                        if(buffer_productor_->getSize() <= buffer_length)
-                        {   // 扩容生产者和消费者的缓冲区
-                            buffer_productor_->scaleUp(2 * buffer_length);
-                            buffer_consumer_->scaleUp(2 * buffer_length);
-                            current_effective_expansion_times = effective_expansion_times;
-                            // std::cerr << "扩容到: " << buffer_productor_->getSize() << std::endl;
-                            return true;
+                    // // 如果已经扩到了这么大，就别扩了
+                    // if(buffer_productor_->getSize() >= 16 * 4096){
+                    //     return false;
+                    // }
+                    if(buffer_productor_->getAvailable() <= buffer_length){  // 扩容生产者和消费者的缓冲区
+                        // 软扩容，日志大小大于缓冲区整个大小时，将缓冲区大小翻倍
+                        if(expand_mode_ == ExpandMode::SOFTEXPANSION){ 
+                            buffer_size = buffer_productor_->getSize();
                         }
-                        else
-                        {
-                            return buffer_productor_->getAvailable() > buffer_length;
+                        // 硬扩容，日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
+                        else if(expand_mode_ == ExpandMode::HARDEXPANSION){
+                            buffer_size = 2 * buffer_length;
                         }
+                        buffer_productor_->scaleUp(buffer_size, 0);
+                        // 扩容的时候也会扩消费者缓冲区，但是和消费者线程不互斥
+                        buffer_consumer_->scaleUp(buffer_size, 1);
+                        current_effective_expansion_times = effective_expansion_times;
+                        // 一次软扩容不一定能保证够用
+                        return buffer_productor_->getAvailable() > buffer_length;
                     }
-                    // 硬扩容，日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
-                    else if(expand_mode_ == ExpandMode::HARDEXPANSION)
-                    {
-                        if(buffer_productor_->getAvailable() <= buffer_length)
-                        {   // 扩容生产者和消费者的缓冲区
-                            buffer_productor_->scaleUp(2 * buffer_length);
-                            buffer_consumer_->scaleUp(2 * buffer_length);
-                            current_effective_expansion_times = effective_expansion_times;
-                            // std::cerr << "扩容到: " << buffer_productor_->getSize() << std::endl;
-                            return true;
-                        }
-                        else
-                        {
-                            // return buffer_productor_->getAvailable() > buffer_length;
-                            return true;
-                        }
-                    }
-                    else
-                    {
-                        perror("Invalid expansion method");
-                    }
-                    return true;    
+                    return true;
                 });
-                buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+            }
+            buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
 
-                label_data_ready_ = true;  // 设置标志
-                cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了
+            label_data_ready_ = true;  // 设置标志
+            cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了
 
-                user_current_count_ -= 1;
-                // 如果是最后一个用户，就提醒析构函数
-                if(ProhibitSummbitLabel_ && user_current_count_ == 0)
-                {
-                    cond_exit_.notify_all();
-                }
-            } 
+            user_current_count_ -= 1;
+            // 如果是最后一个用户，就提醒析构函数
+            if(ProhibitSummbitLabel_ && user_current_count_ == 0)
+            {
+                cond_exit_.notify_all();
+            }
         }
     };
 

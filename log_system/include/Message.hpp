@@ -3,6 +3,7 @@
 #include "Level.hpp"
 #include <string>
 #include <ctime>
+#include <sstream>
 #include "LogSystemUtils.hpp"
 
 namespace mylog{
@@ -14,8 +15,10 @@ namespace mylog{
         std::string format(const std::string unformatted_message, mylog::LogLevel level = mylog::LogLevel::INFO)
         {
             std::time_t now = mylog::Util::Date::Now();
-            std::string time_str = std::ctime(&now);  // "Sun Sep  7 20:16:39 2025\n"
-            time_str.pop_back();  // 去掉换行符
+            // std::string time_str = std::ctime(&now);  // "Sun Sep  7 20:16:39 2025\n"
+            // time_str.pop_back();  // 去掉换行符
+            char time_buf[64];
+            std::strftime(time_buf, sizeof(time_buf), "%a %b %d %H:%M:%S %Y", std::localtime(&now));
             
             std::string level_str = "";
             switch(level)
@@ -27,8 +30,10 @@ namespace mylog{
                 case mylog::LogLevel::FATAL: level_str = "FATAL"; break;
                 default:              level_str = "FATAL";
             }
-
-            return "[" + time_str + "] [" + level_str + "] " + unformatted_message;
+            // return "[" + time_str + "] [" + level_str + "] " + unformatted_message;
+            std::ostringstream oss;
+            oss << "[" << time_buf << "] [" << level_str << "] " << unformatted_message;
+            return oss.str();
         }
     };
 }

@@ -112,7 +112,7 @@ int main()
 }
 #endif
 
-void threadfunc()
+void threadfunc(int i)
 {
     auto start = std::chrono::steady_clock::now();
     bool label = true;
@@ -121,15 +121,15 @@ void threadfunc()
     while (std::chrono::steady_clock::now() - start < std::chrono::seconds(1))
     {
         cnt++;
-        mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
-        // if(label && std::chrono::steady_clock::now() - start >= std::chrono::seconds(1))
-        // {
-        //     label = false;
-            
-        // }
+        if(i == 1){
+            mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
+        }
+        else if(i == 2){
+            mylog::GetLogger("asynclogger2")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
+        }
     }
     std::cout << "循环结束，运行了1秒\n" << "执行了: " << cnt << "次" << std::endl;
-    std::cout << "1秒内发送了: " << cnt << " 条日志" << std::endl;
+    // std::cout << "1秒内发送了: " << cnt << " 条日志" << std::endl;
 
 }
 
@@ -143,21 +143,31 @@ int main()
     threadpool_->setup();
     threadpool_->startup();
 
-    mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
+    // mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
 
     // 使用日志器建造者一个名字叫asynclogger的日志器
     std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
     Glb->BuildLoggerName("asynclogger");
     Glb->BuildLoggerFlush<mylog::FileFlush>("./log/app.log", 100 * 1024);
-    Glb->BuildLoggerThreadPool(threadpool_.get());
+    
     mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));
 
+    std::shared_ptr<mylog::LoggerBuilder> Glb2 = std::make_shared<mylog::LoggerBuilder>();
+    Glb2->BuildLoggerName("asynclogger2");
+    Glb2->BuildLoggerFlush<mylog::FileFlush>("./log/app2.log", 100 * 1024);
+    // Glb->BuildLoggerThreadPool(threadpool_.get());
+    mylog::LoggerManager::GetInstance().AddLogger(Glb2->Build(mylog::LogLevel::DEBUG));
 
-    std::thread t1(threadfunc);
-    // std::thread t2(threadfunc);
+    std::thread t1(threadfunc, 1);
+    std::thread t2(threadfunc, 2);
 
     t1.join();
-    // t2.join();
+    t2.join();
+
+    // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // 加了上面那一句，日志器的析构就不用那么讲究，因为1s的时候够生产者消费者把数据都清空掉
+
+
 
     return 0;
 }

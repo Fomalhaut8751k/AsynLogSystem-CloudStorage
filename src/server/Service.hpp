@@ -92,7 +92,7 @@ namespace mystorage
                 请求中包含"low_storage"，说明请求中存在文件数据，并希望普通存储
                 请求中包含"deep_storage，则压缩后存储
             */
-            struct evbuffer* buf = evhttp_request_get_input_buffer(req);
+            struct evbuffer* buf = evhttp_request_get_input_buffer(req);   // 获取 HTTP 请求的消息体（body）数据缓冲区。
             if(nullptr == buf)
             {
                 // mylog::GetLogger("default")->Log({"Upload fail because evhttp_request_get_input_buffer is empty", mylog::LogLevel::WARN});
@@ -396,7 +396,11 @@ namespace mystorage
             StorageInfo info;
             std::string resource_path = evhttp_uri_get_path(evhttp_request_get_evhttp_uri(req));
 
+            std::cerr << "resource_path before decode: " << resource_path << std::endl;
+
             resource_path = UrlDecode(resource_path);
+
+            std::cerr << "resource_path after decode: " << resource_path << std::endl;
 
             // 根据resource_path在tabel_中搜索对应的StorageInfo
             storage_data_->GetOneByURL(resource_path, &info);
@@ -437,6 +441,8 @@ namespace mystorage
             }
             // mylog::GetLogger("default")->Log({("request download_path: " + download_path), mylog::LogLevel::INFO});
             mylog::GetLogger(logger_name_)->Info("request download_path: " + download_path);
+
+            std::cerr << "download_path: " << download_path << std::endl;
 
             FileUtil fu(download_path);
             // deep storage中压缩文件存在，但是解压后的文件不存在，即压缩的时候出错
@@ -481,8 +487,8 @@ namespace mystorage
                 evhttp_send_reply(req, 404, download_path.c_str(), NULL);
                 return -1;
             }
-            evbuffer* outbuf = evhttp_request_get_output_buffer(req);
-            int fd = open(download_path.c_str(), O_RDONLY);
+            evbuffer* outbuf = evhttp_request_get_output_buffer(req);  // 获取输出缓冲区
+            int fd = open(download_path.c_str(), O_RDONLY);  // 打开要发送的文件
             if(-1 == fd)
             {
                 // mylog::GetLogger("default")->Log({("open file error: " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
@@ -492,7 +498,7 @@ namespace mystorage
                 return -1;
             }
             
-            if(-1 == evbuffer_add_file(outbuf, fd, 0, fu.FileSize()))
+            if(-1 == evbuffer_add_file(outbuf, fd, 0, fu.FileSize()))  // 将文件添加到输出缓冲区（准备发送）
             {
                 // mylog::GetLogger("default")->Log({("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno)), mylog::LogLevel::ERROR});
                 mylog::GetLogger(logger_name_)->Error("evbuffer_add_file: " + std::to_string(fd) + " -- " + download_path + " -- " + strerror(errno));
@@ -626,7 +632,9 @@ namespace mystorage
             sin_.sin_family = AF_INET;
             sin_.sin_port = htons(server_port_);
 
+            // 创建HTTP服务器对象，基于之前创建的事件基础对象
             httpd_ = evhttp_new(base_);
+            // 绑定HTTP服务器到指定IP和端口，"0.0.0.0"表示监听所有网络接口
             if(evhttp_bind_socket(httpd_, "0.0.0.0", server_port_) != 0)
             {
                 // mylog::GetLogger("default")->Log({"Initialize terminate when evhttp_bind_socket", mylog::LogLevel::ERROR});
@@ -634,6 +642,8 @@ namespace mystorage
 
                 return -1;
             }
+            // 设置HTTP请求的通用回调函数，因为没有指定路由，因此所有请求都会调用到GenHandler进行统一处理
+            // 可以这样指定路由：evhttp_set_cb(httpd_, "/download", DownloadHandler, arg);
             evhttp_set_gencb(httpd_, GenHandler, (void*)threadpool_);
 
             return 0;
