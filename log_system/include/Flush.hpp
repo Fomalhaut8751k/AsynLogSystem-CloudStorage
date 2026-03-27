@@ -28,7 +28,7 @@ namespace mylog
         }
 
         ~ConsoleFlush(){
-            std::cerr << "~ConsoleFlush()" << std::endl;
+            // std::cerr << "~ConsoleFlush()" << std::endl;
         }
 
         void flush(const std::string& formatted_log)
@@ -71,7 +71,7 @@ namespace mylog
         {
             if(file_.is_open())
                 file_.close(); 
-            std::cerr << "~FileFlush()" << std::endl;
+            // std::cerr << "~FileFlush()" << std::endl;
         };
 
         void flush(const std::string& formatted_log)
@@ -156,7 +156,7 @@ namespace mylog
         {
             if(file_.is_open())
                 file_.close(); 
-            std::cerr << "~RollFileFlush()" << std::endl;
+            // std::cerr << "~RollFileFlush()" << std::endl;
         }
 
         void flush(const std::string& formatted_log)

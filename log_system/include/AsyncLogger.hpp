@@ -208,7 +208,7 @@ namespace mylog
         AsyncLogger():AbstractAsyncLogger(){}
         ~AsyncLogger()
         {
-            std::cerr << "~AsyncLogger()" << std::endl;
+            // std::cerr << "~AsyncLogger()" << std::endl;
         }
 
         void setLevel(mylog::LogLevel level)

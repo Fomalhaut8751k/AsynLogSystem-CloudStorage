@@ -29,11 +29,9 @@ namespace mylog
         AsyncBuffer()
         {
             init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();
-            init_buffer_size_ = 4 * 1024;
-            std::cout << "init_buffer_size_: " << init_buffer_size_ << std::endl;
+            init_buffer_size_ = 4 * 1024 * 1024;
+            // std::cout << "init_buffer_size_: " << init_buffer_size_ << std::endl;
             
-            
-
             buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
             buffer_size_ = init_buffer_size_;
             buffer_pos_ = 0;
@@ -42,10 +40,11 @@ namespace mylog
         ~AsyncBuffer() = default;
 
         // 获取缓冲区可用空间大小
-        unsigned int getAvailable() const { return buffer_size_- buffer_pos_; }
+        // unsigned int getAvailable() const { return buffer_size_- buffer_pos_; }
+        unsigned int getAvailable() const { return buffer_.size() - buffer_pos_; }
 
         // 获取缓冲区总的空间大小
-        unsigned int getSize() const { return buffer_size_; }
+        unsigned int getSize() const { return buffer_.size(); }
 
         // 判断使用的缓冲区大小是否大于初始大小，用于扩容下的判断
         bool getIdleExpansionSpace() const { return buffer_pos_ < init_buffer_size_; }
@@ -54,20 +53,35 @@ namespace mylog
         bool getEmpty() const { return buffer_pos_ == 0; }
 
         // 扩容
+        // int scaleUp(unsigned expand_size, unsigned int buffertype = 0)
+        // {
+        //     // 扩容和写操作互斥，因为扩容可能会开辟新的空间
+        //     if(expand_size <= 0) { return -1; }
+        //     if(buffertype == 0){  // 写
+        //         std::unique_lock<std::mutex> lock(BufferWriteMutex_); 
+        //         buffer_.resize(buffer_size_ + expand_size, '\0');
+        //     }
+        //     else{ // (buffertype == 1)  // 读
+        //         std::unique_lock<std::mutex> lock(BufferReadMutex_);
+        //         buffer_.resize(buffer_size_ + expand_size, '\0');
+        //     }
+            
+        //     buffer_size_ += expand_size;
+        //     return 0;
+        // }
         int scaleUp(unsigned expand_size, unsigned int buffertype = 0)
         {
             // 扩容和写操作互斥，因为扩容可能会开辟新的空间
             if(expand_size <= 0) { return -1; }
             if(buffertype == 0){  // 写
                 std::unique_lock<std::mutex> lock(BufferWriteMutex_); 
-                buffer_.resize(buffer_size_ + expand_size, '\0');
+                buffer_.resize(buffer_.size() + expand_size, '\0');
             }
             else{ // (buffertype == 1)  // 读
                 std::unique_lock<std::mutex> lock(BufferReadMutex_);
-                buffer_.resize(buffer_size_ + expand_size, '\0');
+                buffer_.resize(buffer_.size() + expand_size, '\0');
             }
-            
-            buffer_size_ += expand_size;
+            // buffer_size_ += expand_size;
             return 0;
         }
 
@@ -90,7 +104,7 @@ namespace mylog
 
                 如果一个用户将要写入数据，发现缓冲区不够写了，就等待？
             */
-            std::unique_lock<std::mutex> lock(BufferWriteMutex_);
+            // std::unique_lock<std::mutex> lock(BufferWriteMutex_);
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += length;  
             buffer_[buffer_pos_++] = '\n';  // 加1空一个\n作为换行符
@@ -132,7 +146,8 @@ namespace mylog
 
         // 清空缓冲区的消息
         void clear(){
-            buffer_.assign(buffer_size_, '\0');  // 清空缓冲区的数据
+            // buffer_.assign(buffer_size_, '\0');  // 清空缓冲区的数据
+            buffer_.assign(buffer_.size(), '\0');
             buffer_pos_ = 0;
         }
     };
