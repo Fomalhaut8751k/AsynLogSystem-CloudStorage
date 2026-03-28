@@ -19,9 +19,17 @@
 #include "Message.hpp"
 #include "MyLog.hpp"
 #include "LogSystemConfig.hpp"
+#include "utils/df.hpp"
 
 #define LOG_BUFFER_INIT_SIZE   (4 * 1024 * 1024)   // 4MB
 #define LOG_BUFFER_MAX_SIZE  (64 * 1024 * 1024)   // 64MB 
+#define SPACE_AVAILABLE 4294967296  // 4G
+
+enum class WaitStatus {
+    DISKINSUFFICIENT,   // 磁盘空间不足
+    BUFFERABAILABLE,    // 缓冲区大小充足
+    BLUE
+};
 
 namespace mylog
 {
@@ -35,6 +43,7 @@ namespace mylog
     {
     private:
         using LOG_FUNC = std::function<void(std::string)>;
+        using LOG_FUNC_DEFAULT = std::function<void(const std::string&string)>;
 
         std::mutex Mutex_;
         std::mutex Mutex_User;
@@ -56,6 +65,8 @@ namespace mylog
         int effective_expansion_times;
 
         LOG_FUNC log_func_;
+        LOG_FUNC_DEFAULT log_func_default;  // 备用的输出模式，将日志不通过缓冲区直接输出到控制台
+
         ExpandMode expand_mode_;
 
         std::atomic_bool ProhibitSummbitLabel_;
@@ -67,11 +78,17 @@ namespace mylog
         // 设置一个计数，只有要用户调用提交函数就+1，提交完走人后就-1
         std::atomic_int user_current_count_;   
 
+        // 记录磁盘磁盘管理状态
+        DiskSpaceChecker::DiskInfo info;
+        std::atomic_uint64_t info_available;  // 记录在变量中，避免频繁使用系统调用
+
     public:
-        AsyncWorker(LOG_FUNC log_func):
+        AsyncWorker(LOG_FUNC log_func, LOG_FUNC_DEFAULT log_func_default):
             buffer_productor_(std::make_shared<AsyncBuffer>()),
             buffer_consumer_(std::make_shared<AsyncBuffer>()),
+
             log_func_(log_func),
+            log_func_default(log_func_default),
 
             label_consumer_ready_(true),
             label_data_ready_(false),
@@ -90,6 +107,9 @@ namespace mylog
             effective_expansion_times = mylog::Config::GetInstance().GetEffectiveExpansionTimes();
 
             effective_expansion_times = 5;
+
+            info = DiskSpaceChecker::get_disk_info("/");
+            info_available = info.available_bytes;
         }
 
         ~AsyncWorker()
@@ -152,6 +172,10 @@ namespace mylog
 
                 // 交换缓冲区
                 if(!buffer_productor_->getEmpty()){
+
+                    // 更新的可用空间,减少量等于此次缓冲区中数据的大小
+                    info_available -= (buffer_productor_->getSize() - buffer_productor_->getAvailable());
+
                     // 这里使用的是Mutex_User也就是用户判断空间是否可以写入数据的时候
                     // 但是并没有和用户写入数据的操作互斥，因此写和交换可能同时发生。
                     std::unique_lock<std::mutex> lock_swap(Mutex_User);
@@ -166,6 +190,7 @@ namespace mylog
                     cond_consumer_.notify_all();
                     // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
                     cond_writable_.notify_all();
+
                 }
                 else{  // 如果醒来发现buffer没有消息，就重新循环，此时消费者没有被生产者notify_all()还是等待，不会抢互斥锁
                     label_data_ready_ = false;
@@ -174,6 +199,7 @@ namespace mylog
                 // 交换后对扩容状态的处理
                 if(current_effective_expansion_times == 0) {
                     // 表示异步工作者认为已经长时间没有使用到扩容的空间，应该释放掉
+                    std::unique_lock<std::mutex> lock_swap(Mutex_User);
                     buffer_productor_->scaleDown();  
                     buffer_consumer_->scaleDown();  // 由于生产者判断了交换前的情况，因此消费者接手它的空间后不用担心缩容对数据的影响
                     current_effective_expansion_times = -1;
@@ -198,7 +224,6 @@ namespace mylog
                         cond_exit_.notify_all();
                         return;
                     }
-
                     label_consumer_ready_ = false;
                     if(!buffer_consumer_) continue;
                     // message_formatted_vector = buffer_consumer_->read();
@@ -217,45 +242,72 @@ namespace mylog
         {
             // 如果禁止提交，已经进来排队的就等处理，如果刚进来的就劝退
             if(ProhibitSummbitLabel_) { return; }
-            const char* buffer = message.c_str();
 
+            // 如果日志大小大于缓冲区最大可以扩容的长度，就丢弃
+            if(buffer_length > LOG_BUFFER_MAX_SIZE){  
+                log_func_default(
+                    std::string("Received a very large log, which has been discarded: ") + \
+                    std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE)
+                );
+                return; 
+            }
+
+            const char* buffer = message.c_str();
             user_current_count_ += 1;
 
             {
                 std::unique_lock<std::mutex> lock(Mutex_User);  
                 // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
+                enum WaitStatus status;
                 unsigned int buffer_size = 0;
-                cond_writable_.wait(lock, [&]()->bool{ 
-                    if(buffer_productor_->getAvailable() > buffer_length){  // 如果足够，就直接返回
-                        return true;
-                    }else{
-                        // 如果不够，并且已经达到容量上限了
-                        if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){  
-                            std::cerr << "尽力了" << std::endl;
-                            return false;
-                        }
-                        // 否则就扩容
-                        if(buffer_productor_->getAvailable() <= buffer_length){  // 扩容生产者和消费者的缓冲区
-                            // 软扩容，日志大小大于缓冲区整个大小时，将缓冲区大小翻倍
-                            if(expand_mode_ == ExpandMode::SOFTEXPANSION){ 
-                                buffer_size = buffer_productor_->getSize();
+                while(1){
+                    cond_writable_.wait(
+                        lock, [&]()->bool{ 
+                            // 如果磁盘空间不足，就需要暂停写入，等开发者手动清理内存，而不是直接丢弃
+                            if(info_available < SPACE_AVAILABLE){  
+                                log_func_default("Disk warning: The current available space is insufficient. Please free up space");
+                                status = WaitStatus::DISKINSUFFICIENT; 
+                                return true;
                             }
-                            // 硬扩容，日志大小大于缓冲区剩余大小时，增加两倍该日志大小的容量
-                            else if(expand_mode_ == ExpandMode::HARDEXPANSION){
-                                buffer_size = 2 * buffer_length;
+                            // 如果磁盘空间足够，且缓冲区的大小足够，就直接返回
+                            if(buffer_productor_->getAvailable() > buffer_length){  
+                                status = WaitStatus::BUFFERABAILABLE;
+                                return true;
                             }
-                            buffer_productor_->scaleUp(buffer_size, 0);
-                            // 扩容的时候也会扩消费者缓冲区，但是和消费者线程不互斥
-                            buffer_consumer_->scaleUp(buffer_size, 1);
-
-                            current_effective_expansion_times = effective_expansion_times;
-                            // 一次软扩容不一定能保证够用
-                            return buffer_productor_->getAvailable() > buffer_length;
+                            // 如果不够，并且已经达到缓冲区扩容的最大容量上限了
+                            else{ 
+                                if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){  
+                                    log_func_default("The buffer has been expanded to its maximum capacity, and log submission will be blocked");
+                                    return false;
+                                }
+                                // 否则就扩容，扩容生产者和消费者的缓冲区, 到原来的两倍
+                                while(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE && buffer_productor_->getAvailable() <= buffer_length){  
+                                    buffer_productor_->scaleUp(buffer_productor_->getSize(), 0);
+                                    buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);  // 扩容的时候也会扩消费者缓冲区，但是和消费者线程不互斥
+                                    current_effective_expansion_times = effective_expansion_times;
+                                }
+                                if(buffer_productor_->getAvailable() > buffer_length){
+                                    status = WaitStatus::BUFFERABAILABLE;
+                                    return true;
+                                }
+                                else{
+                                    return false;
+                                }
+                            }
+                            return true;
                         }
+                    );
+                    if(status == WaitStatus::BUFFERABAILABLE){
+                        buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+                        break;
                     }
-                    return true;
-                });
-                buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+                    else if(status == WaitStatus::DISKINSUFFICIENT){
+                        std::this_thread::sleep_for(std::chrono::seconds(5));  // 先休眠5秒，然后更新DiskInfo
+                        info = DiskSpaceChecker::get_disk_info("/");
+                        info_available = info.available_bytes; 
+                    }
+                }
+                
             }
             label_data_ready_ = true;  // 设置标志
             cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了

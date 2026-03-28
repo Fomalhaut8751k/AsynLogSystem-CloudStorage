@@ -19,7 +19,7 @@ namespace mylog
         unsigned int buffer_size_;   // 缓冲区长度
         unsigned int buffer_pos_;    // 可写入位置的起点
 
-        unsigned int init_buffer_size_;   // 初始的缓冲区大小
+        uint32_t init_buffer_size_;   // 初始的缓冲区大小
 
         std::mutex BufferWriteMutex_;
         std::mutex BufferReadMutex_;
@@ -40,7 +40,6 @@ namespace mylog
         ~AsyncBuffer() = default;
 
         // 获取缓冲区可用空间大小
-        // unsigned int getAvailable() const { return buffer_size_- buffer_pos_; }
         unsigned int getAvailable() const { return buffer_.size() - buffer_pos_; }
 
         // 获取缓冲区总的空间大小
@@ -104,7 +103,7 @@ namespace mylog
 
                 如果一个用户将要写入数据，发现缓冲区不够写了，就等待？
             */
-            // std::unique_lock<std::mutex> lock(BufferWriteMutex_);
+            std::unique_lock<std::mutex> lock(BufferWriteMutex_);
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += length;  
             buffer_[buffer_pos_++] = '\n';  // 加1空一个\n作为换行符

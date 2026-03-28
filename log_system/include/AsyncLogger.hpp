@@ -16,15 +16,13 @@
 class AbstractAsyncLogger
 {
 protected:
-    // std::shared_ptr<mylog::AsyncWorker> worker_;
-    
-
     mylog::ThreadPool* threadpool_;                // 线程池指针，用于调用submitLog  
-
     mylog::LogLevel level_;                       // 输入日志的最低级别
 
     std::string logger_name_;                     // 日志器的名称
     std::shared_ptr<mylog::Flush> flush_;         // 日志输出器     
+    std::shared_ptr<mylog::Flush> flush_default_;
+
     // 应该先创建Flush，再创建AsyncWorker，这样才能先析构AsyncWorker，再析构Flush
     std::shared_ptr<mylog::AsyncWorker> worker_;
     std::unique_ptr<mylog::LoggerMessage> formatter_;
@@ -44,7 +42,7 @@ public:
     void setLogFlush(const std::string& logpath, size_t size) 
     { 
         flush_ = std::make_shared<FlushType>(logpath, size); 
-        // std::cerr << "typename: " << typeid(FlushType).name() << std::endl;
+        flush_default_ = std::make_shared<mylog::ConsoleFlush>();
     }
 
     // 接受线程池的指针，用于调用submitLog推送日志到服务器
@@ -67,7 +65,11 @@ public:
     // 将消息处理为Debug类型的日志并发送
     void Debug(const std::string& unformatted_message, const char* FILE = __FILE__, int LINE = __LINE__)  // 调试信息
     {
-        // 先格式化日志信息
+        if(unformatted_message.length() > 64 * 1024 * 1024){
+            std::string formatted_message = formatter_->format("A massive log was examined and filtered", mylog::LogLevel::WARN);
+            flush_default_->flush(formatted_message);
+            return;
+        }
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::DEBUG);  // message.hpp
         const int formatted_message_length = formatted_message.length();
 
@@ -88,8 +90,11 @@ public:
     // 将消息处理为Info类型的日志并发送
     void Info(const std::string& unformatted_message)  // 普通信息
     {
-        // 先格式化日志信息
-        // std::cerr << formatter_.get() << std::endl;
+        if(unformatted_message.length() > 64 * 1024 * 1024){
+            std::string formatted_message = formatter_->format("A massive log was examined and filtered", mylog::LogLevel::WARN);
+            flush_default_->flush(formatted_message);
+            return;
+        }
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::INFO);  // message.hpp
         unsigned int formatted_message_length = formatted_message.length();
 
@@ -106,7 +111,11 @@ public:
     // 将消息处理为Warn类型的日志并发送
     void Warn(const std::string& unformatted_message)  // 警告信息
     {
-        // 先格式化日志信息
+        if(unformatted_message.length() > 64 * 1024 * 1024){
+            std::string formatted_message = formatter_->format("A massive log was examined and filtered", mylog::LogLevel::WARN);
+            flush_default_->flush(formatted_message);
+            return;
+        }
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::WARN);  // message.hpp
         unsigned int formatted_message_length = formatted_message.length();
 
@@ -123,7 +132,11 @@ public:
     // 将消息处理为Error类型的日志并发送
     void Error(const std::string& unformatted_message)  // 错误信息
     {
-        // 先格式化日志信息
+        if(unformatted_message.length() > 64 * 1024 * 1024){
+            std::string formatted_message = formatter_->format("A massive log was examined and filtered", mylog::LogLevel::WARN);
+            flush_default_->flush(formatted_message);
+            return;
+        }
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::ERROR);  // message.hpp
         unsigned int formatted_message_length = formatted_message.length();
 
@@ -145,7 +158,11 @@ public:
     // 将消息处理为Fatal类型的日志并发送
     void Fatal(const std::string& unformatted_message)  // 致命信息
     {
-        // 先格式化日志信息
+        if(unformatted_message.length() > 64 * 1024 * 1024){
+            std::string formatted_message = formatter_->format("A massive log was examined and filtered", mylog::LogLevel::WARN);
+            flush_default_->flush(formatted_message);
+            return;
+        }
         std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::FATAL);  // message.hpp
         unsigned int formatted_message_length = formatted_message.length();
 
@@ -161,6 +178,13 @@ public:
         }
         // 把信息写到worker_的buffer当中
         worker_->readFromUser(formatted_message, formatted_message_length);
+    }
+
+    void WarnDefault(const std::string& unformatted_message)  // 警告信息
+    {
+        // 先格式化日志信息，用于反馈关键信息，直接输出到控制台
+        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::WARN);  // message.hpp
+        std::cerr << formatted_message << std::endl;
     }
 
     void Log(std::pair<std::string, mylog::LogLevel> log_message)
@@ -219,7 +243,10 @@ namespace mylog
         void setAsyncWorker()
         {
             // 让worker的消费者线程可以将日志发送到指定为止
-            worker_ = std::make_shared<mylog::AsyncWorker>(std::bind(&AsyncLogger::log, this, std::placeholders::_1));
+            worker_ = std::make_shared<mylog::AsyncWorker>(
+                std::bind(&AsyncLogger::log, this, std::placeholders::_1),
+                std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
+            );
             worker_->start();
         }
     };
