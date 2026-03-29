@@ -4,10 +4,12 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <shared_mutex>
 
 #include "Message.hpp"
 #include "LogSystemConfig.hpp"
 
+#define LOG_BUFFER_INIT_SIZE   (4 * 1024 * 1024)   // 4MB
 
 namespace mylog
 {
@@ -16,7 +18,6 @@ namespace mylog
     {
     protected:
         std::vector<char> buffer_;  // 缓冲区
-        unsigned int buffer_size_;   // 缓冲区长度
         unsigned int buffer_pos_;    // 可写入位置的起点
 
         uint32_t init_buffer_size_;   // 初始的缓冲区大小
@@ -26,13 +27,11 @@ namespace mylog
         std::condition_variable cv_;
 
     public:
-        AsyncBuffer()
-        {
-            init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();
-            init_buffer_size_ = 4 * 1024 * 1024;
+        AsyncBuffer(){
+            // init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();  // 从配置文件中初始化
+            init_buffer_size_ = LOG_BUFFER_INIT_SIZE;
             
             buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
-            buffer_size_ = init_buffer_size_;
             buffer_pos_ = 0;
         }
 
@@ -70,7 +69,6 @@ namespace mylog
         int scaleDown()
         {   // 虽然说缩容没有开辟新空间的可能，但是还是加上锁安全一点
             buffer_.resize(init_buffer_size_);   // 回到初始大小
-            buffer_size_ = init_buffer_size_;
             return 0;
         }
 

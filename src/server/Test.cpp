@@ -29,14 +29,6 @@ int main()
     // mylog::GetLogger("default")->Log(threadpool_connected_message);
     mylog::GetLogger(logger_name_)->Info(threadpool_connected_message.first);
 
-    // 创建新的日志器
-    // std::shared_ptr<mylog::LoggerBuilder> Glb = std::make_shared<mylog::LoggerBuilder>();
-    // Glb->BuildLoggerName("asynclogger");
-    // Glb->BuildLoggerFlush<mylog::ConsoleFlush>("", 0);
-    // Glb->BuildLoggerThreadPool(threadpool_.get());
-    // mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));
-    // mylog::AsyncLogger::n_ptr ptr = mylog::LoggerManager::GetInstance().GetLogger("asynclogger").get();
-
     // 初始化并启动存储服务器 
     std::pair<std::string, mylog::LogLevel> storage_config_message = mystorage::Config::GetInstance().ReadConfig();
 
