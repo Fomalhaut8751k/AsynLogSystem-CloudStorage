@@ -277,7 +277,7 @@ namespace mylog
                             // 如果不够，并且已经达到缓冲区扩容的最大容量上限了
                             else{ 
                                 if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){  
-                                    log_func_default("The buffer has been expanded to its maximum capacity, and log submission will be blocked");
+                                    // log_func_default("The buffer has been expanded to its maximum capacity, and log submission will be blocked");
                                     return false;
                                 }
                                 // 否则就扩容，扩容生产者和消费者的缓冲区, 到原来的两倍

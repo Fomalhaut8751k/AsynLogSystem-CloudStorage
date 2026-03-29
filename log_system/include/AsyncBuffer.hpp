@@ -30,7 +30,6 @@ namespace mylog
         {
             init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();
             init_buffer_size_ = 4 * 1024 * 1024;
-            // std::cout << "init_buffer_size_: " << init_buffer_size_ << std::endl;
             
             buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
             buffer_size_ = init_buffer_size_;
@@ -51,23 +50,6 @@ namespace mylog
         // 判断缓冲区是否为空
         bool getEmpty() const { return buffer_pos_ == 0; }
 
-        // 扩容
-        // int scaleUp(unsigned expand_size, unsigned int buffertype = 0)
-        // {
-        //     // 扩容和写操作互斥，因为扩容可能会开辟新的空间
-        //     if(expand_size <= 0) { return -1; }
-        //     if(buffertype == 0){  // 写
-        //         std::unique_lock<std::mutex> lock(BufferWriteMutex_); 
-        //         buffer_.resize(buffer_size_ + expand_size, '\0');
-        //     }
-        //     else{ // (buffertype == 1)  // 读
-        //         std::unique_lock<std::mutex> lock(BufferReadMutex_);
-        //         buffer_.resize(buffer_size_ + expand_size, '\0');
-        //     }
-            
-        //     buffer_size_ += expand_size;
-        //     return 0;
-        // }
         int scaleUp(unsigned expand_size, unsigned int buffertype = 0)
         {
             // 扩容和写操作互斥，因为扩容可能会开辟新的空间
