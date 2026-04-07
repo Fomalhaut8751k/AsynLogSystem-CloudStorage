@@ -26,6 +26,8 @@ namespace mylog
         std::mutex BufferReadMutex_;
         std::condition_variable cv_;
 
+        std::atomic_uint32_t buffer_size_;  // 缓冲区总大小，缓冲区总的大小在扩容和缩容的时候会发生改变
+
     public:
         AsyncBuffer(){
             // init_buffer_size_ = mylog::Config::GetInstance().GetInitBufferSize();  // 从配置文件中初始化
@@ -38,10 +40,12 @@ namespace mylog
         ~AsyncBuffer() = default;
 
         // 获取缓冲区可用空间大小
-        unsigned int getAvailable() const { return buffer_.size() - buffer_pos_; }
+        // unsigned int getAvailable() const { return buffer_.size() - buffer_pos_; }
+        unsigned int getAvailable() const { return buffer_size_ - buffer_pos_;}
 
         // 获取缓冲区总的空间大小
-        unsigned int getSize() const { return buffer_.size(); }
+        // unsigned int getSize() const { return buffer_.size(); }
+        unsigned int getSize() const { return buffer_size_; }
 
         // 判断使用的缓冲区大小是否大于初始大小，用于扩容下的判断
         bool getIdleExpansionSpace() const { return buffer_pos_ < init_buffer_size_; }
@@ -49,7 +53,12 @@ namespace mylog
         // 判断缓冲区是否为空
         bool getEmpty() const { return buffer_pos_ == 0; }
 
-        int scaleUp(unsigned expand_size, unsigned int buffertype = 0)
+        // 更新缓冲区大小
+        void updateBufferSize(){
+            buffer_size_ = buffer_.size();
+        }
+
+        int scaleUp(unsigned int expand_size, int buffertype = 0)
         {
             // 扩容和写操作互斥，因为扩容可能会开辟新的空间
             if(expand_size <= 0) { return -1; }
@@ -65,10 +74,30 @@ namespace mylog
             return 0;
         }
 
+        int scaleUpProductorWithLogQueueLoad(unsigned int expand_size, const char* message_unformatted, unsigned int length){
+            if(expand_size <= 0 || length <= 0) { return -1; }
+            std::unique_lock<std::mutex> lock(BufferWriteMutex_); 
+            // 扩容
+            buffer_.resize(buffer_.size() + expand_size, '\0');
+            // 把logQueue_中的日志写到扩容后的缓冲区当中
+            std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
+            buffer_pos_ += length;  
+            buffer_[buffer_pos_++] = '\n';  // 加1空一个\n作为换行符
+            buffer_size_ = buffer_.size();
+        }
+
+        int scaleUpConsumer(unsigned int expand_size){
+            std::unique_lock<std::mutex> lock(BufferReadMutex_);
+            buffer_.resize(buffer_.size() + expand_size, '\0');    // 加1空一个\n作为换行符
+            buffer_size_ = buffer_.size();
+            return 0;
+        }
+
         // 缩容
         int scaleDown()
         {   // 虽然说缩容没有开辟新空间的可能，但是还是加上锁安全一点
             buffer_.resize(init_buffer_size_);   // 回到初始大小
+            updateBufferSize();
             return 0;
         }
 

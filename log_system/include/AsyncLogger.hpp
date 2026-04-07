@@ -7,6 +7,8 @@
     肯定有个函数，接受组织好的日志作为参数
 */
 #include "AsyncWorker.hpp"
+#include "AsyncWorkerWithLogQueue.hpp"
+
 #include "LogSystemUtils.hpp"
 #include "Flush.hpp"
 #include "backlog/ClientBackupLog.hpp"
@@ -24,7 +26,9 @@ protected:
     std::shared_ptr<mylog::Flush> flush_default_;
 
     // 应该先创建Flush，再创建AsyncWorker，这样才能先析构AsyncWorker，再析构Flush
-    std::shared_ptr<mylog::AsyncWorker> worker_;
+    // std::shared_ptr<mylog::AsyncWorker> worker_;
+    std::shared_ptr<mylog::AsyncWorkerWithLogQueue> worker_;
+
     std::unique_ptr<mylog::LoggerMessage> formatter_;
 
 public:
@@ -83,7 +87,8 @@ public:
         std::string final_message = formatted_message + buf;
 
         // 把最终信息写到worker_的buffer当中
-        worker_->readFromUser(final_message, final_message.length());
+        // worker_->readFromUser(final_message, final_message.length());
+        worker_->LogQueueForward(final_message);
         
     }
 
@@ -105,7 +110,8 @@ public:
         }
 
         // 把信息写到worker_的buffer当中
-        worker_->readFromUser(formatted_message, formatted_message_length);
+        // worker_->readFromUser(formatted_message, formatted_message_length);
+        worker_->LogQueueForward(formatted_message);
     }
 
     // 将消息处理为Warn类型的日志并发送
@@ -126,7 +132,8 @@ public:
         }
 
         // 把信息写到worker_的buffer当中
-        worker_->readFromUser(formatted_message, formatted_message_length);
+        // worker_->readFromUser(formatted_message, formatted_message_length);
+        worker_->LogQueueForward(formatted_message);
     }
 
     // 将消息处理为Error类型的日志并发送
@@ -152,7 +159,8 @@ public:
         }
 
         // 把信息写到worker_的buffer当中
-        worker_->readFromUser(formatted_message, formatted_message_length);
+        // worker_->readFromUser(formatted_message, formatted_message_length);
+        worker_->LogQueueForward(formatted_message);
     }
 
     // 将消息处理为Fatal类型的日志并发送
@@ -177,7 +185,8 @@ public:
             threadpool_->submitLog(formatted_message);
         }
         // 把信息写到worker_的buffer当中
-        worker_->readFromUser(formatted_message, formatted_message_length);
+        // worker_->readFromUser(formatted_message, formatted_message_length);
+        worker_->LogQueueForward(formatted_message);
     }
 
     void WarnDefault(const std::string& unformatted_message)  // 警告信息
@@ -243,7 +252,11 @@ namespace mylog
         void setAsyncWorker()
         {
             // 让worker的消费者线程可以将日志发送到指定为止
-            worker_ = std::make_shared<mylog::AsyncWorker>(
+            // worker_ = std::make_shared<mylog::AsyncWorker>(
+            //     std::bind(&AsyncLogger::log, this, std::placeholders::_1),
+            //     std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
+            // );
+            worker_ = std::make_shared<mylog::AsyncWorkerWithLogQueue>(
                 std::bind(&AsyncLogger::log, this, std::placeholders::_1),
                 std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
             );

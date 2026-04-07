@@ -118,25 +118,25 @@ void threadfunc(int i)
     bool label = true;
     
     int cnt = 0;
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(60))
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(10))
     {
         cnt++;
-        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
         if(i == 1){
+            
             mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
         }
         else if(i == 2){
             mylog::GetLogger("asynclogger2")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
         }
     }
-    std::cout << "循环结束，运行了60秒\n" << "执行了: " << cnt << "次" << std::endl;
-    std::cout << "1秒内发送了: " << cnt << " 条日志" << std::endl;
+    std::cout << "循环结束，运行了10秒\n" << "执行了: " << cnt << "次" << std::endl;
+    std::cout << "10秒内发送了: " << cnt << " 条日志" << std::endl;
 
-    // for(int i = 0; i < 10000000; i++){
+    // for(int i = 0; i < 500000; i++){
     //     cnt++;
     //     mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
     // }
-    // std::cout << "循环结束，运行了1000000次\n" << "执行了: " << cnt << "次" << std::endl;
+    // std::cout << "循环结束，运行了500000次\n" << "执行了: " << cnt << "次" << std::endl;
     // std::cout << "1秒内发送了: " << cnt << " 条日志" << std::endl;
 
 }
@@ -160,11 +160,11 @@ int main()
     
     mylog::LoggerManager::GetInstance().AddLogger(Glb->Build(mylog::LogLevel::DEBUG));
 
-    std::shared_ptr<mylog::LoggerBuilder> Glb2 = std::make_shared<mylog::LoggerBuilder>();
-    Glb2->BuildLoggerName("asynclogger2");
-    Glb2->BuildLoggerFlush<mylog::FileFlush>("./log/app2.log", 100 * 1024);
-    // Glb->BuildLoggerThreadPool(threadpool_.get());
-    mylog::LoggerManager::GetInstance().AddLogger(Glb2->Build(mylog::LogLevel::DEBUG));
+    // std::shared_ptr<mylog::LoggerBuilder> Glb2 = std::make_shared<mylog::LoggerBuilder>();
+    // Glb2->BuildLoggerName("asynclogger2");
+    // Glb2->BuildLoggerFlush<mylog::FileFlush>("./log/app2.log", 100 * 1024);
+    // // Glb->BuildLoggerThreadPool(threadpool_.get());
+    // mylog::LoggerManager::GetInstance().AddLogger(Glb2->Build(mylog::LogLevel::DEBUG));
 
     std::thread t1(threadfunc, 1);
     // std::thread t2(threadfunc, 1);

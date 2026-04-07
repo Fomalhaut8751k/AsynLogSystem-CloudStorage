@@ -20,10 +20,12 @@
 #include "Message.hpp"
 #include "MyLog.hpp"
 #include "LogSystemConfig.hpp"
-#include "utils/df.hpp"
+#include "utils/utils2.hpp"
 
-#define LOG_BUFFER_MAX_SIZE  (64 * 1024 * 1024)   // 64MB 
-#define SPACE_AVAILABLE 4294967296  // 4G
+#define LOG_BUFFER_INIT_SIZE_ (4 * 1024 * 1024)
+#define LOG_BUFFER_MAX_SIZE_  (64 * 1024 * 1024)   // 64MB 
+// #define SPACE_AVAILABLE 4294967296  // 4G
+std::uint64_t SPACE_AVAILABLE = 4ULL * 1024 * 1024 * 1024;  // 4GB
 
 enum class WaitStatus {
     DISKINSUFFICIENT,   // 磁盘空间不足
@@ -31,9 +33,9 @@ enum class WaitStatus {
     BLUE
 };
 
-enum class Status{
-    BUFFERABAILABLE,
-    EXPAND
+enum class ExpandType{
+    PRODUCTOR = 0,
+    CONSUMER = 1
 };
 
 namespace mylog
@@ -91,6 +93,9 @@ namespace mylog
         std::shared_mutex SharedMutex_;
         std::mutex InfoMutex_;
 
+        // 日志控制队列
+        std::shared_ptr<LogQueue> logQueue_;
+
     public:
         AsyncWorker(LOG_FUNC log_func, LOG_FUNC_DEFAULT log_func_default):
             buffer_productor_(std::make_shared<AsyncBuffer>()),
@@ -106,7 +111,9 @@ namespace mylog
             user_current_count_(0),
 
             // expand_mode_(ExpandMode::HARDEXPANSION)
-            expand_mode_(ExpandMode::SOFTEXPANSION)
+            expand_mode_(ExpandMode::SOFTEXPANSION),
+
+            logQueue_(std::make_shared<LogQueue>())
         {
             ExitLabel_ = false;
             ExitProductorLabel_ = false;
@@ -181,7 +188,6 @@ namespace mylog
                     // 更新的可用空间,减少量等于此次缓冲区中数据的大小
                     info_available -= (buffer_productor_->getSize() - buffer_productor_->getAvailable());
                     std::unique_lock<std::mutex> lock_swap(Mutex_User);
-                    // std::unique_lock write(SharedMutex_);
 
                     auto tmp_buffer_controler = buffer_productor_;
                     buffer_productor_ = buffer_consumer_;
@@ -189,12 +195,9 @@ namespace mylog
                     
                     label_consumer_ready_ = false;
                     label_data_ready_ = false;
-
-                    // 此时消费者的buffer就有了数据
-                    cond_consumer_.notify_all();
-                    // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
-                    cond_writable_.notify_all();
-                    // cond_writabel_v2_.notify_all();
+                    
+                    cond_consumer_.notify_all();  // 此时消费者的buffer就有了数据  
+                    cond_writable_.notify_all();  // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
 
                 }
                 else{  // 如果醒来发现buffer没有消息，就重新循环，此时消费者没有被生产者notify_all()还是等待，不会抢互斥锁
@@ -214,6 +217,99 @@ namespace mylog
             }
         }
 
+        void productorTask3()  // 生产者线程
+        {
+            while(1){
+                std::unique_lock<std::mutex> lock(Mutex_);
+                cond_productor_.wait(lock, [&]()->bool{  // 只要满足消费者已就绪，且用户发来消息，才会唤醒生产者
+                        return label_consumer_ready_ && label_data_ready_ || ExitLabel_;
+                    }
+                );
+
+                uint32_t logQueueSize_ = logQueue_->getLogSize();  // 日志队列中的日志大小，在此次判断后加入的不管
+
+                // 确保退出的时候缓冲区以及日志队列内都没有数据
+                if(buffer_productor_->getEmpty() && logQueueSize_ == 0 && ExitLabel_){  
+                    ExitProductorLabel_ = true;
+                    cond_exit_.notify_all();
+                    return;
+                }
+                // 说明有日志因为太大暂时无法写入缓冲区，就需要扩容
+                unsigned int newBufferSize = 0;
+                std::string logFromLogQueue;
+                if(logQueueSize_ > 0){
+                    newBufferSize = calculateTotalCapacity(buffer_productor_->getSize() + logQueueSize_, LOG_BUFFER_INIT_SIZE);
+#if 0               // 这一段涉及了同一个锁(AsyncWorker::BufferWriteMutex_)的两次(scaleUp和write)加锁解锁，把它优化成一次
+                    // 扩容生产者缓冲区和消费者缓冲区
+                    buffer_productor_->scaleUp(newBufferSize, 0);  // 扩容之后，缓冲区的bufferSize_还没更新，因此对于用户来说就是没扩容的状态
+                    buffer_consumer_->scaleUp(newBufferSize, 1);
+                    // 将队列中的日志写到扩容后的缓冲区
+                    logQueue_->deleteFromTail(logFromLogQueue);
+                    buffer_productor_->write(logFromLogQueue.c_str(), logFromLogQueue.length());
+#endif
+                    logQueue_->deleteFromTail(logFromLogQueue);
+                    // 包括了扩容以及把日志队列中的日志加载到扩容后的缓冲区当中
+                    buffer_productor_->scaleUpProductorWithLogQueueLoad(newBufferSize, logFromLogQueue.c_str(), logFromLogQueue.length());
+                    buffer_consumer_->scaleUpConsumer(newBufferSize);
+                }
+                // 交换缓冲区
+                if(!buffer_productor_->getEmpty()){
+                    std::unique_lock<std::mutex> lock_swap(Mutex_User);
+                    auto tmp_buffer_controler = buffer_productor_;
+                    buffer_productor_ = buffer_consumer_;
+                    buffer_consumer_ = tmp_buffer_controler;
+
+                    label_consumer_ready_ = false;
+                    label_data_ready_ = false;
+                    
+                    cond_consumer_.notify_all();  // 此时消费者的buffer就有了数据  
+                    cond_writable_.notify_all();  // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
+                }
+
+                // 交换前对扩容计数的处理，此时可以判断扩容的部分是否被使用到
+                if(current_effective_expansion_times > 0){   // 当前是扩容状态
+                    // 如果扩容的部分没有被使用到
+                    if(buffer_productor_->getIdleExpansionSpace()) {   
+                        current_effective_expansion_times--;  // 计数减一
+                    }
+                    else { // 如果使用到了
+                        current_effective_expansion_times = effective_expansion_times;  // 刷新计数
+                    }
+                }
+                // 交换缓冲区
+                if(!buffer_productor_->getEmpty()){
+                    // 更新的可用空间,减少量等于此次缓冲区中数据的大小
+                    info_available -= (buffer_productor_->getSize() - buffer_productor_->getAvailable());
+                    std::unique_lock<std::mutex> lock_swap(Mutex_User);
+
+                    auto tmp_buffer_controler = buffer_productor_;
+                    buffer_productor_ = buffer_consumer_;
+                    buffer_consumer_ = tmp_buffer_controler;
+                    
+                    label_consumer_ready_ = false;
+                    label_data_ready_ = false;
+                    
+                    cond_consumer_.notify_all();  // 此时消费者的buffer就有了数据  
+                    cond_writable_.notify_all();  // 完成交换后，生产者就有了空间，就可以发通知，告知可以写入
+
+                }
+                else{  // 如果醒来发现buffer没有消息，就重新循环，此时消费者没有被生产者notify_all()还是等待，不会抢互斥锁
+                    label_data_ready_ = false;
+                }
+                // 交换后对扩容状态的处理
+                // #######################################################################################################
+                if(current_effective_expansion_times == 0) {
+                    // 表示异步工作者认为已经长时间没有使用到扩容的空间，应该释放掉
+                    std::unique_lock<std::mutex> lock_swap(Mutex_User);
+                    // std::unique_lock writelock(SharedMutex_);
+                    buffer_productor_->scaleDown();  
+                    buffer_consumer_->scaleDown();  // 由于生产者判断了交换前的情况，因此消费者接手它的空间后不用担心缩容对数据的影响
+                    current_effective_expansion_times = -1;
+                }
+                // #######################################################################################################
+            }
+        }
+   
         void consumerTask()   // 消费者线程
         { 
             // 消费者唯一的出口就是从等待哪里出去
@@ -249,10 +345,10 @@ namespace mylog
             if(ProhibitSummbitLabel_) { return; }
 
             // 如果日志大小大于缓冲区最大可以扩容的长度，就丢弃
-            if(buffer_length > LOG_BUFFER_MAX_SIZE){  
+            if(buffer_length > LOG_BUFFER_MAX_SIZE_){  
                 log_func_default(
                     std::string("Received a very large log, which has been discarded: ") + \
-                    std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE)
+                    std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE_)
                 );
                 return; 
             }
@@ -281,12 +377,12 @@ namespace mylog
                             }
                             // 如果不够，并且已经达到缓冲区扩容的最大容量上限了
                             else{ 
-                                if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){  
+                                if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE_){  
                                     // log_func_default("The buffer has been expanded to its maximum capacity, and log submission will be blocked");
                                     return false;
                                 }
                                 // 否则就扩容，扩容生产者和消费者的缓冲区, 到原来的两倍
-                                while(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE && buffer_productor_->getAvailable() <= buffer_length){  
+                                while(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE_ && buffer_productor_->getAvailable() <= buffer_length){  
                                     buffer_productor_->scaleUp(buffer_productor_->getSize(), 0);
                                     buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);  // 扩容的时候也会扩消费者缓冲区，但是和消费者线程不互斥
                                     current_effective_expansion_times = effective_expansion_times;
@@ -326,254 +422,82 @@ namespace mylog
         }
 
         void readFromUser1(std::string message, unsigned int buffer_length){
-            if(ProhibitSummbitLabel_) return;   // 如果禁止提交，已经进来排队的就等处理，如果刚进来的就劝退
+            // if(ProhibitSummbitLabel_) return;   // 如果禁止提交，已经进来排队的就等处理，如果刚进来的就劝退
             
-            if(buffer_length > LOG_BUFFER_MAX_SIZE){  // 如果日志大小大于缓冲区最大可以扩容的长度，就丢弃
-                log_func_default(
-                    std::string("Received a very large log, which has been discarded: ") + \
-                    std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE)
-                );
-                return; 
-            }
+            // if(buffer_length > LOG_BUFFER_MAX_SIZE){  // 如果日志大小大于缓冲区最大可以扩容的长度，就丢弃
+            //     log_func_default(
+            //         std::string("Received a very large log, which has been discarded: ") + \
+            //         std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE)
+            //     );
+            //     return; 
+            // }
 
-            enum Status status;
-            const char* buffer = message.c_str();
-            user_current_count_ += 1;
+            // enum Status status;
+            // const char* buffer = message.c_str();
+            // user_current_count_ += 1;
 
-            while(1){
-                // -------------------------------------------------------------------------------------------------------
-                {   std::shared_lock readlock(SharedMutex_);   // 读锁，允许同时有多个读操作
+            // while(1){
+            //     // -------------------------------------------------------------------------------------------------------
+            //     {   std::shared_lock readlock(SharedMutex_);   // 读锁，允许同时有多个读操作
                     
-                    if(info_available < SPACE_AVAILABLE){   // 如果磁盘空间不足，就需要暂停写入，等开发者手动清理内存，而不是直接丢弃
-                        log_func_default("Disk warning: The current available space is insufficient. Please free up space");
-                        std::this_thread::sleep_for(std::chrono::seconds(5));  // 先休眠5秒，然后更新DiskInfo（这里在读锁，因此不会影响其他线程）
-                        {
-                            std::lock_guard<std::mutex> infolock(InfoMutex_);
-                            info = DiskSpaceChecker::get_disk_info("/");  
-                        }
-                        info_available = info.available_bytes;   // 这是个原子类型
-                        continue;  // 继续循环
-                    } 
-                    if(buffer_productor_->getAvailable() <= buffer_length){   // 如果磁盘空间足够，但缓冲区的大小不够
-                        if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){   // 可以扩容
-                            status = Status::EXPAND;
-                        }else{  // 不可以扩容，也就是当前缓冲区的大小已经扩容到上限了
-                            cond_writabel_v2_.wait(readlock);
-                            continue;
-                        }
-                    }
-                    else{  // 磁盘空间足够，且缓冲区大小足够
-                        status = Status::BUFFERABAILABLE;
-                    }
-                }
-                // -------------------------------------------------------------------------------------------------------
-                // #######################################################################################################
-                {   std::unique_lock writelock(SharedMutex_);   // 写锁，只允许有一个写操作，并且不能读
-                    if(status == Status::EXPAND){  
-                        if(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE  // 锁加双重判断
-                                && buffer_productor_->getAvailable() <= buffer_length){
-                            buffer_productor_->scaleUp(buffer_productor_->getSize(), 0);  // 扩容生产者
-                            buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);   // 扩容消费者
-                            current_effective_expansion_times = effective_expansion_times;
-                        }
-                    }  // 扩容之后，可以直接写了，但是一次扩容不一定就够了
-                    // if(status == Status::BUFFERABAILABLE){
-                    if(buffer_productor_->getAvailable() > buffer_length){   // 锁加双重判断
-                        status = Status::BUFFERABAILABLE;   // 作为判断标准，因为有可能是扩容后才可以写的
-                        buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
-                        break;
-                    }else continue;  
-                }
-                // #######################################################################################################
-            } 
-            /*
-                如果磁盘空间不足，就【continue】，等待有人清理磁盘空间
-                如果磁盘空间足够，但是不能扩容了，就【break】;
-                如果磁盘空间足够，且能扩容，就扩容
-                如果磁盘空间足够，且不需要扩容就能写入数据，就写入
+            //         if(info_available < SPACE_AVAILABLE){   // 如果磁盘空间不足，就需要暂停写入，等开发者手动清理内存，而不是直接丢弃
+            //             log_func_default("Disk warning: The current available space is insufficient. Please free up space");
+            //             std::this_thread::sleep_for(std::chrono::seconds(5));  // 先休眠5秒，然后更新DiskInfo（这里在读锁，因此不会影响其他线程）
+            //             {
+            //                 std::lock_guard<std::mutex> infolock(InfoMutex_);
+            //                 info = DiskSpaceChecker::get_disk_info("/");  
+            //             }
+            //             info_available = info.available_bytes;   // 这是个原子类型
+            //             continue;  // 继续循环
+            //         } 
+            //         if(buffer_productor_->getAvailable() <= buffer_length){   // 如果磁盘空间足够，但缓冲区的大小不够
+            //             if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE){   // 可以扩容
+            //                 status = Status::EXPAND;
+            //             }else{  // 不可以扩容，也就是当前缓冲区的大小已经扩容到上限了
+            //                 cond_writabel_v2_.wait(readlock);
+            //                 continue;
+            //             }
+            //         }
+            //         else{  // 磁盘空间足够，且缓冲区大小足够
+            //             status = Status::BUFFERABAILABLE;
+            //         }
+            //     }
+            //     // -------------------------------------------------------------------------------------------------------
+            //     // #######################################################################################################
+            //     {   std::unique_lock writelock(SharedMutex_);   // 写锁，只允许有一个写操作，并且不能读
+            //         if(status == Status::EXPAND){  
+            //             if(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE  // 锁加双重判断
+            //                     && buffer_productor_->getAvailable() <= buffer_length){
+            //                 buffer_productor_->scaleUp(buffer_productor_->getSize(), 0);  // 扩容生产者
+            //                 buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);   // 扩容消费者
+            //                 current_effective_expansion_times = effective_expansion_times;
+            //             }
+            //         }  // 扩容之后，可以直接写了，但是一次扩容不一定就够了
+            //         // if(status == Status::BUFFERABAILABLE){
+            //         if(buffer_productor_->getAvailable() > buffer_length){   // 锁加双重判断
+            //             status = Status::BUFFERABAILABLE;   // 作为判断标准，因为有可能是扩容后才可以写的
+            //             buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+            //             break;
+            //         }else continue;  
+            //     }
+            //     // #######################################################################################################
+            // } 
+            // /*
+            //     如果磁盘空间不足，就【continue】，等待有人清理磁盘空间
+            //     如果磁盘空间足够，但是不能扩容了，就【break】;
+            //     如果磁盘空间足够，且能扩容，就扩容
+            //     如果磁盘空间足够，且不需要扩容就能写入数据，就写入
 
-                走到这里，要么数据已经写入，要么数据太大且无法扩容
-            */
-            if(status == Status::BUFFERABAILABLE){
-                label_data_ready_ = true;
-                cond_productor_.notify_all();
-            }
-            user_current_count_ -= 1;
-            if(ProhibitSummbitLabel_ && user_current_count_ == 0){
-                cond_exit_.notify_all();
-            }
-        }
-
-        void readFromUser2(std::string message, unsigned int buffer_length) {
-            // 快速检查：禁止提交
-            if (ProhibitSummbitLabel_.load(std::memory_order_acquire)) {
-                return;
-            }
-            
-            // 快速检查：日志太大
-            if (buffer_length > LOG_BUFFER_MAX_SIZE) {
-                log_func_default(
-                    std::string("Received a very large log, which has been discarded: ") + 
-                    std::to_string(buffer_length) + " > " + std::to_string(LOG_BUFFER_MAX_SIZE)
-                );
-                return;
-            }
-            
-            const char* buffer = message.c_str();
-            user_current_count_ += 1;
-            
-            // 阶段1：快速路径 - 尝试无锁写入（使用原子操作）
-            bool written = false;
-            
-            // 先快速检查磁盘空间（原子读取）
-            if (info_available.load(std::memory_order_acquire) >= SPACE_AVAILABLE) {
-                // 尝试使用读锁快速检查缓冲区
-                {
-                    std::shared_lock read_lock(SharedMutex_, std::try_to_lock);
-                    if (read_lock.owns_lock()) {
-                        size_t available = buffer_productor_->getAvailable();
-                        if (available > buffer_length) {
-                            // 需要升级为写锁，使用 try_lock 避免死锁
-                            read_lock.unlock();
-                            
-                            std::unique_lock write_lock(SharedMutex_, std::try_to_lock);
-                            if (write_lock.owns_lock()) {
-                                // 双重检查
-                                if (info_available.load(std::memory_order_acquire) >= SPACE_AVAILABLE &&
-                                    buffer_productor_->getAvailable() > buffer_length) {
-                                    buffer_productor_->write(buffer, buffer_length);
-                                    written = true;
-                                    label_data_ready_.store(true, std::memory_order_release);
-                                    cond_productor_.notify_all();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 快速路径成功
-            if (written) {
-                user_current_count_ -= 1;
-                if (ProhibitSummbitLabel_.load() && user_current_count_ == 0) {
-                    cond_exit_.notify_all();
-                }
-                return;
-            }
-            
-            // 阶段2：慢速路径 - 使用条件变量和互斥锁
-            // 这里使用独立的互斥锁，避免与快速路径的读写锁冲突
-            std::unique_lock<std::mutex> lock(Mutex_User);
-            
-            enum class SlowPathStatus {
-                NEED_WAIT,
-                SPACE_READY,
-                DISK_FULL,
-                NEED_EXPAND
-            };
-            
-            while (true) {
-                // 检查条件
-                SlowPathStatus current_status = SlowPathStatus::NEED_WAIT;
-                
-                cond_writable_.wait(lock, [&]() -> bool {
-                    // 1. 检查磁盘空间
-                    uint64_t current_available = info_available.load(std::memory_order_acquire);
-                    if (current_available < SPACE_AVAILABLE) {
-                        log_func_default("Disk warning: The current available space is insufficient. Please free up space");
-                        current_status = SlowPathStatus::DISK_FULL;
-                        return true;
-                    }
-                    
-                    // 2. 检查缓冲区空间
-                    size_t available = buffer_productor_->getAvailable();
-                    if (available > buffer_length) {
-                        current_status = SlowPathStatus::SPACE_READY;
-                        return true;
-                    }
-                    
-                    // 3. 尝试扩容
-                    if (buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE) {
-                        current_status = SlowPathStatus::NEED_EXPAND;
-                        return true;
-                    }
-                    
-                    // 无法满足，继续等待
-                    return false;
-                });
-                
-                // 根据状态处理
-                switch (current_status) {
-                    case SlowPathStatus::SPACE_READY: {
-                        // 写入数据
-                        buffer_productor_->write(buffer, buffer_length);
-                        goto write_success;
-                    }
-                    
-                    case SlowPathStatus::DISK_FULL: {
-                        // 磁盘空间不足，休眠后重试
-                        lock.unlock();
-                        std::this_thread::sleep_for(std::chrono::seconds(5));
-                        
-                        // 更新磁盘信息
-                        {
-                            std::lock_guard<std::mutex> info_lock(InfoMutex_);
-                            info = DiskSpaceChecker::get_disk_info("/");
-                            info_available.store(info.available_bytes, std::memory_order_release);
-                        }
-                        
-                        lock.lock();
-                        continue;
-                    }
-                    
-                    case SlowPathStatus::NEED_EXPAND: {
-                        // 需要扩容
-                        // 注意：扩容操作需要写锁保护
-                        lock.unlock();  // 先释放 Mutex_User，避免死锁
-                        
-                        {
-                            std::unique_lock write_lock(SharedMutex_);
-                            
-                            // 双重检查
-                            if (buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE &&
-                                buffer_productor_->getAvailable() <= buffer_length) {
-                                
-                                // 循环扩容直到满足需求
-                                while (buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE &&
-                                    buffer_productor_->getAvailable() <= buffer_length) {
-                                    size_t current_size = buffer_productor_->getSize();
-                                    buffer_productor_->scaleUp(current_size, 0);
-                                    buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);
-                                    current_effective_expansion_times = effective_expansion_times;
-                                }
-                            }
-                        }
-                        
-                        lock.lock();
-                        
-                        // 扩容后再次检查
-                        if (buffer_productor_->getAvailable() > buffer_length) {
-                            buffer_productor_->write(buffer, buffer_length);
-                            goto write_success;
-                        }
-                        continue;
-                    }
-                    
-                    default:
-                        continue;
-                }
-            }
-            
-        write_success:
-            // 写入成功后的处理
-            label_data_ready_.store(true, std::memory_order_release);
-            cond_productor_.notify_all();
-            
-            user_current_count_ -= 1;
-            if (ProhibitSummbitLabel_.load(std::memory_order_acquire) && 
-                user_current_count_.load() == 0) {
-                cond_exit_.notify_all();
-            }
+            //     走到这里，要么数据已经写入，要么数据太大且无法扩容
+            // */
+            // if(status == Status::BUFFERABAILABLE){
+            //     label_data_ready_ = true;
+            //     cond_productor_.notify_all();
+            // }
+            // user_current_count_ -= 1;
+            // if(ProhibitSummbitLabel_ && user_current_count_ == 0){
+            //     cond_exit_.notify_all();
+            // }
         }
     };
 
