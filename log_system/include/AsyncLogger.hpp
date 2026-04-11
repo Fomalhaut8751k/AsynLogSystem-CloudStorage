@@ -6,13 +6,17 @@
 
     肯定有个函数，接受组织好的日志作为参数
 */
+#include "Worker.hpp"
 #include "AsyncWorker.hpp"
 #include "AsyncWorkerWithLogQueue.hpp"
+#include "AsyncWorkerWithLogDeque.hpp"
 
 #include "LogSystemUtils.hpp"
 #include "Flush.hpp"
 #include "backlog/ClientBackupLog.hpp"
 #include "ThreadPool.hpp"
+
+#define LOGGERTYPE 2   // 0, 1, 2, 3
 
 // 抽象的产品(异步日志器)类
 class AbstractAsyncLogger
@@ -26,8 +30,16 @@ protected:
     std::shared_ptr<mylog::Flush> flush_default_;
 
     // 应该先创建Flush，再创建AsyncWorker，这样才能先析构AsyncWorker，再析构Flush
-    // std::shared_ptr<mylog::AsyncWorker> worker_;
+
+#if LOGGERTYPE == 0
+    std::shared_ptr<mylog::Worker> worker_;
+#elif LOGGERTYPE == 1
+    std::shared_ptr<mylog::AsyncWorker> worker_;
+#elif LOGGERTYPE == 2
     std::shared_ptr<mylog::AsyncWorkerWithLogQueue> worker_;
+#elif LOGGERTYPE == 3
+    std::shared_ptr<mylog::AsyncWorkerWithLogDeque> worker_;
+#endif
 
     std::unique_ptr<mylog::LoggerMessage> formatter_;
 
@@ -100,18 +112,10 @@ public:
             flush_default_->flush(formatted_message);
             return;
         }
-        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::INFO);  // message.hpp
-        unsigned int formatted_message_length = formatted_message.length();
-
         // 如果消息等级过低，就不写入缓冲区
-        if(level_ > mylog::LogLevel::INFO)
-        {
-            return;
-        }
-
-        // 把信息写到worker_的buffer当中
-        // worker_->readFromUser(formatted_message, formatted_message_length);
-        worker_->LogQueueForward(formatted_message);
+        if(level_ > mylog::LogLevel::INFO) return;
+        // 减少临时对象的创建
+        worker_->LogQueueForward(formatter_->format(unformatted_message, mylog::LogLevel::INFO));
     }
 
     // 将消息处理为Warn类型的日志并发送
@@ -251,15 +255,28 @@ namespace mylog
 
         void setAsyncWorker()
         {
-            // 让worker的消费者线程可以将日志发送到指定为止
-            // worker_ = std::make_shared<mylog::AsyncWorker>(
-            //     std::bind(&AsyncLogger::log, this, std::placeholders::_1),
-            //     std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
-            // );
+#if LOGGERTYPE == 0
+            worker_ = std::make_shared<mylog::Worker>(
+                std::bind(&AsyncLogger::log, this, std::placeholders::_1),
+                std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
+            );
+#elif LOGGERTYPE == 1
+            让worker的消费者线程可以将日志发送到指定为止
+            worker_ = std::make_shared<mylog::AsyncWorker>(
+                std::bind(&AsyncLogger::log, this, std::placeholders::_1),
+                std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
+            );
+#elif LOGGERTYPE == 2
             worker_ = std::make_shared<mylog::AsyncWorkerWithLogQueue>(
                 std::bind(&AsyncLogger::log, this, std::placeholders::_1),
                 std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
             );
+#elif LOGGERTYPE == 3
+            worker_ = std::make_shared<mylog::AsyncWorkerWithLogDeque>(
+                std::bind(&AsyncLogger::log, this, std::placeholders::_1),
+                std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
+            );
+#endif         
             worker_->start();
         }
     };

@@ -13,6 +13,15 @@ using json = nlohmann::json;
 
 namespace mylog
 {
+
+    std::uint32_t M = 1024 * 1024;
+    std::uint32_t G = 1024 * 1024 * 1024;
+
+    #define LOG_BUFFER_MAX_SIZE  512 * M      // 512MB，链表中最多存储这么多的日志量
+    #define SPACE_ERROR_THRESHOLD 6 * G      // 6G，如果磁盘可用空间小于6G，就只记录ERROR即以上级别的日志
+    #define SPACE_FATAL_THRESHOLD 4 * G      // 4G，如果磁盘可用空间小于4G，就只记录FATAL级别的日志 
+    #define SPACE_FORBIDDEN_THRESHOLD 2 * G  // 2G，如果磁盘可用空间小于2G，就不再记录任何日志，直接丢弃
+
     class Config
     {
     private:

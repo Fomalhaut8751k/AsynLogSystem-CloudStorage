@@ -12,7 +12,7 @@ namespace mylog{
     class LoggerMessage
     {   // 将日志信息格式化为包含时间戳和日志级别的字符串
     public:
-        std::string format(const std::string unformatted_message, mylog::LogLevel level = mylog::LogLevel::INFO)
+        std::string format(const std::string& unformatted_message, mylog::LogLevel level = mylog::LogLevel::INFO)
         {
             std::time_t now = mylog::Util::Date::Now();
             // std::string time_str = std::ctime(&now);  // "Sun Sep  7 20:16:39 2025\n"

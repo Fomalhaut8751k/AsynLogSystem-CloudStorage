@@ -118,21 +118,20 @@ void threadfunc(int i)
     bool label = true;
     
     int cnt = 0;
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5))
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(1))
     {
         cnt++;
         if(i == 1){
-            
             mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
         }
         else if(i == 2){
             mylog::GetLogger("asynclogger2")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
         }
     }
-    std::cout << "循环结束，运行了5秒\n" << "执行了: " << cnt << "次" << std::endl;
-    std::cout << "5秒内发送了: " << cnt << " 条日志" << std::endl;
+    std::cout << "循环结束，运行了1秒\n" << "执行了: " << cnt << "次" << std::endl;
+    std::cout << "1秒内发送了: " << cnt << " 条日志" << std::endl;
 
-    // for(int i = 0; i < 500000; i++){
+    // for(int i = 0; i < 1; i++){
     //     cnt++;
     //     mylog::GetLogger("asynclogger")->Info("克里斯蒂亚诺罗纳尔多多斯桑托斯阿伟罗先生,五届世界杯淘汰赛0球0助,三次入选世界杯淘汰赛最差阵容");
     // }

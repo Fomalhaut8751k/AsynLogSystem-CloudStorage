@@ -745,5 +745,107 @@
     | 不使用节点池 | 5/6 | 2884509 | 47.04 MB | 12315 | 是 |
     | 使用节点池 | 5/6 | 3163535 | 51.20 MB | 8 | 是 |
 
+31. 2026.4.9
+
+- 问题17
+
+    当日志输出量达到一定值(可能300万多一点)，日志文件的大小就一直是512MB，即便输出的日志量多了不少。512MB是设置的日志队列可以容纳的日志大小的最大值。
+
+    已解决，插入逻辑中区分了是否是删除调用的插入并提供了不同的处理，比如将logSize_重新设置为0。但是在调用的时候忘记区分了。
+
+    对于`deleteFromTail()`函数，我们对其中的字符串处理操作进行进一步的优化，因为每次插入是会更新当前日志队列中日志的总大小的，因此我们就可以根据这一数据预先通过`reserve()`开辟一块足够大的空间，避免在字符串拼接的时候频繁的扩容(扩容涉及了数据从旧内存到新内存的拷贝开销)，对比了1s，10s，20s输出的日志量下三种处理模式(无reserve的string处理，stringstream处理，有reserver的string处理)
+
+    |   | notify时的日志量 | 总1s的平均处理日志量 | 总10s的平均处理日志量 | 总20s的平均处理日志量  | 总30s的平均处理日志量  |
+    |----------|----------|--------------|----------|----------|----------|
+    | 无 reserve 的 string 处理 | 5/6 | 55.33 MB | 50.10 MB | 45.72 MB | 45.06 MB |
+    | stringstream 处理 | 5/6 | 53.35 MB | 54.45 MB | 51.71 MB | 55.30 MB |
+    | 有 reserve 的 string 处理 | 5/6 | 52.30 MB | 55.02 MB | 55.81 MB | 56.32 MB |
+
+    比较异步和同步设计的性能差异，设计了一个简单的同步日志系统，`Worker.hpp`中定义了一个简单的接口，接收到一条日志就即可输出。当然一条一条处理性能肯定差，因此我们通过单个缓冲区，互斥和同步来实现批量的日志输出。但是也有一个问题，比如10000个用户提交日志，前9999个用户写入日志后就可以走了，而第10000个用户写入时日志总量超过了阈值，于是就需要在他的线程中处理10000条日志，这是极其不合理的，因此同步应该还是第一种(用户提交日志，系统输出日志，用户走人)。
+
+    ```cpp
+    void forward(std::string message){
+        std::lock_guard<std::mutex> lock(muteX_);
+        if(exitLabel_) return;
+        if(buffer_.size() + message.length() >= bufferMaxSize_ - 1){
+            return;
+        }
+        buffer_.append(message);
+        buffer_.append("\n");
+        if(buffer_.size() > 5 * bufferMaxSize_ / 6){
+            buffer_.pop_back();  // 去掉最后的'\n'
+            logFunc_(buffer_);
+            buffer_.clear();
+        }
+    }
+    ```
+    |   | 总1s的平均处理日志量 | 总10s的平均处理日志量 | 总20s的平均处理日志量  | 总30s的平均处理日志量  |
+    |----------|----------|--------------|----------|----------|
+    | 同步 | 33.20 MB | 33.91 MB | 33.53 MB | 33.91 MB |
+    | 同步(改进) | **60.77 MB** | **61.99 MB** | **58.88 MB** | **58.37 MB** |
+    | 异步 | 53.35 MB | 54.45 MB | 51.71 MB | 55.30 MB |
+
+    这里串行设计中读取的效率应该要比我们日志队列的读取要高一些(直接`logFunc_(buffer_);`)，因为日志队列需要一个节点一个节点处理，还包括了节点的归还什么的操作。
+
+    有一个细节，在1s的for循环不断写入日志的过程中，由于日志量有限，达不到输出阈值，因此这1s内全部都是写入，没有读取，而在1s后，`Worker`析构时，检测到buffer还有日志才进行的交换，而且缓冲区大小为512MB，十秒才不多一共才输出500多MB的日志量，因此日志输出的处理部分是很少的。
+
+    所以要想异步的效果更好，至少在日志输入这一块不能有太多的逻辑，效率要尽可能的接近同步，这样才能因为异步输出而提高性能，输出可以复杂，因为是异步的，不会影响或者对输入的影响很少。
+    ```cpp
+    // 同步Worker的输入逻辑
+    buffer_.append(message + "\n");  
+
+    // 异步Worker的输入逻辑
+    std::shared_ptr<LogNode> nnode = getConnection();     // 从节点池或获取，如果空了还得自己创建
+    nnode->str = s;                                       // 将日志记录到节点中
+    std::shared_ptr<LogNode> preNext = pre->next.lock();  // 从弱智能指针升级为强智能指针
+    pre->next = nnode;                                    // 头插法涉及的链表节点的连接
+    nnode->prev = pre;
+    nnode->next = preNext;
+    preNext->prev = nnode;
+    ```
+
+    尝试使用`std::deque`来替代链表，在`deque`的头部插入日志，在`deque`的尾部取出日志，头插的效率和`std::string::append()`的时间复杂度差不多。但是从内存分配的角度来看，`std::string::reserve()`可以预先分配，而`deque`不能，随着元素的增多会不断地分配新内存，导致了日志输入的性能依然达不到同步的效果，只有 `43.41 MB/s` 左右
+    ```cpp
+    void LogQueueForward(std::string message){
+        // ===================================================================
+        // std::uint32_t allLogSize = logQueue_->insertFromHead(message, 0);
+        std::lock_guard<std::mutex> lock(Mutex);
+        logDeque.insert(logDeque.begin(), s.rbegin(), s.rend());  
+        logDeque.push_front('\n');
+        logSize += (s.length() + 1);
+        return logSize;
+        // ===================================================================
+        diskInfoAvailable_ -= (message.length() + 1);
+        if(allLogSize > 5 * LOG_BUFFER_MAX_SIZE / 6){
+            condV_.notify_one();
+        }
+    }
+    ```
+
+32. 2026.4.10
+
+    开源的异步日志项目使用缓冲区可以达到平均 `103.18 MB` 的每秒日志处理量。
+
+    首先我们的`LogQueueForward()`函数和`insertFromHead()`的参数是按值传递的，涉及了字符串的拷贝。我们都修改为以引用的形式传入，得到的结果(以带节点池和string::reserve()的版本，以及通知阈值为5/6), 可以说略有提升，但是不大。
+
+    |   | 总1s的平均处理日志量 | 总10s的平均处理日志量 |
+    |----------|----------|--------------|
+    | 异步 | 53.35 MB | 54.45 MB |
+    | 异步(改) | 56.31 MB | 54.93 MB |
     
-    
+    参考开源的设计方法：
+
+    1. 两个缓冲区(生产者和消费者)，初始化都不到10MB.
+
+        ```cpp
+        std::vector<char> buffer_;  // 缓冲区
+        size_t write_pos_;          // 生产者此时的位置
+        size_t read_pos_;           // 消费者此时的位置
+        ```
+
+    2. 写入缓冲区，日志类型(参数)为 `const char* data`, 使用 `std::copy` 将 `data` 中的数据拷贝到缓冲区当中，从 `write_pos_` 开始。
+
+    3. 在 `AsyncWorker` 中只额外启动了一个线程，获取互斥锁，然后交换缓冲区，释放互斥锁，然后处理消费者缓冲区的日志，这是日志输出部分。对于日志输入部分，获取互斥锁，【等待生产者缓冲区空间足够】，把日志写入缓冲区当中。
+
+        ![](img/buffer_structure.png)
+
