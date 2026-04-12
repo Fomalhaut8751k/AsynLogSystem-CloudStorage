@@ -6,6 +6,8 @@
 #include <unordered_map>
 
 #include "mymuduo/TimeStamp.h"
+#include "mymuduo/Buffer.h"
+#include "mymuduo/TcpConnection.h"
 
 namespace http
 {

@@ -849,3 +849,67 @@
 
         ![](img/buffer_structure.png)
 
+
+33. 2026.4.11
+
+    由于 `evhttp` 会在我们调用 `evhttp_request_get_input_buffer(req)` 获取缓冲区中的请求体前，把完整的请求体放在缓冲区 `evbuffer` 当中。如果8G的数据，那么这个过程肯定会把内存耗尽。
+
+    因此我们尝试将网络库从 `libevent` 换成 `muduo`。因为我们给 `muduo` 提供的回调函数 `onMessage()` 会在读事件到来时触发，此时 `Buffer` 中会存放从 `socket` 缓冲区中读取到数据，此时只是请求报文的一部分，随着每次触发都会追加到 `Buffer`。又由于请求报文的接收顺序是 请求行 -> 请求头 -> 空行 -> 请求体。因此完整的请求头内容肯定先于请求体读取到。此时就可以通过请求头中的 `Content-Type` 字段来判断请求体的长度。
+
+    ```cpp
+    std::string contentLength = request_.getHeader("Content-Length");
+    if(!contentLength.empty())
+    {
+        request_.setContentLength(std::stoi(contentLength));
+        if(request_.contentLength() > 0)  // 补充，如果request_.contentLength() > threshold
+        {
+            state_ = kExpectBody;  // 大于0说明需要继续读取body
+        }
+        else
+        {
+            state_ = kGotAll;
+            hasMore = false;
+        }   
+    }
+    ```
+
+34. 2026.4.12
+
+- 问题18
+
+    将网络库换成muduo后，能正常打开页面，但是不能上传文件。显示
+
+    ![](img/connection_error.png)
+
+    先把中间件去掉。。。然后依然网络连接失败，这次是`OPTIONS`的问题，因为没有和这个请求方法匹配的路由函数。
+    
+    因为在请求头中有自定义的头，比如 `filename` 和 `storagetype` 等，就会发送OPTIONS预检，像第二个项目就没有发送过OPTIONS，因为它的请求头只有 `Accept`, `Connection` 等字段。这里发现，调用 `conn->send(&buf)` 时，buf的状态行只有 204 然后就是\r\n，少了版本号和状态信息。此外返回的允许的方法中，`Options` 少了一个 `s`。以及我们需要在允许的头中添加相应的字段。
+
+    ```cpp
+    // response.setStatusCode(HttpResponse::k204NoContent);
+    response.setStatusLine(request.getVersion(), HttpResponse::k204NoContent, "Origin Allowed");
+    ```
+
+    ```cpp
+    config.allowedHeaders = {"Content-Type, Authorization, FileName, StorageType"};
+    ```
+
+    现在客户端浏览器能够发送请求了，但是在服务端显示日志显示如下，客户端接收到 `400` (但是没有响应头?) :
+
+    [ERROR]2026/04/12 13:36:40 : Exception in onMessage: [json.exception.parse_error.101] parse error at line 1, column 1: syntax error while parsing value - invalid literal; last read: '/'
+
+    第二个项目里HttpServer中做了一些判断，在请求体中使用到了json，来确定是否是ai消息防止阻塞
+
+35. 2026.4.13
+
+    完成了模拟大文件拒绝接受的场景(磁盘和内存都写不下这个文件)，这里模拟成大于512mb就拒绝写入的情况。在muduo中，onMessage()每次调用都会把读取到数据追加到buffer中，如果上次的数据没有被读取走就会累加。由于报文的到达顺序肯定是请求行->请求头->空行->请求体，在解析的时候就可以判断buffer中是否有\r\n，有的话就表示有一个完整的部分，然后读走，进行解析。请求头先于请求体解析，那么就可以在接收请求体的开始阶段，判断请求头的content-length字段，获取文件大小，如果太大就直接关闭连接，这样就能在内存耗尽前拒绝写入文件。
+
+    尚有一点小问题，客户端能上传小文件，服务端能保存，也能上传大文件被服务端拒绝，但是客户端接受不到响应。
+
+    ***如果文件太大(比内存大)但是磁盘写的下***
+
+
+
+
+
+

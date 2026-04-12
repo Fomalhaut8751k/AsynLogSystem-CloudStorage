@@ -2,6 +2,7 @@
 #include "Service.hpp"
 #include "StorageUtils.hpp"
 
+#include "StorageServer.hpp"
 
 mystorage::DataManager* storage_data_;
 std::unique_ptr<mylog::ThreadPool> threadpool_;
@@ -11,8 +12,8 @@ int main()
 {   
     // std::unique_ptr<mylog::ThreadPool>& threadpool_ = mylog::threadpool_; 
 
-    std::pair<std::string, mylog::LogLevel> log_system_config_message 
-                = mylog::Config::GetInstance().ReadConfig();
+    // std::pair<std::string, mylog::LogLevel> log_system_config_message 
+    //             = mylog::Config::GetInstance().ReadConfig();
 
     // 初始化并启动线程池 
     threadpool_ = std::make_unique<mylog::ThreadPool>();
@@ -23,24 +24,30 @@ int main()
     // 初始化启动日志系统并创建日志器
     mylog::LoggerManager::GetInstance().AddDefaultLogger(threadpool_.get());
     
-    // mylog::GetLogger("default")->Log(log_system_config_message);
-    mylog::GetLogger(logger_name_)->Info(log_system_config_message.first);
+    // // mylog::GetLogger("default")->Log(log_system_config_message);
+    // mylog::GetLogger(logger_name_)->Info(log_system_config_message.first);
 
-    // mylog::GetLogger("default")->Log(threadpool_connected_message);
-    mylog::GetLogger(logger_name_)->Info(threadpool_connected_message.first);
+    // // mylog::GetLogger("default")->Log(threadpool_connected_message);
+    // mylog::GetLogger(logger_name_)->Info(threadpool_connected_message.first);
 
     // 初始化并启动存储服务器 
     std::pair<std::string, mylog::LogLevel> storage_config_message = mystorage::Config::GetInstance().ReadConfig();
 
-    // mylog::GetLogger("default")->Log(storage_config_message);
-    mylog::GetLogger(logger_name_)->Info(storage_config_message.first);
+    // // mylog::GetLogger("default")->Log(storage_config_message);
+    // mylog::GetLogger(logger_name_)->Info(storage_config_message.first);
 
     storage_data_ = new mystorage::DataManager();
 
+    // std::thread t1([]()->void{
+    //     std::unique_ptr<mystorage::StorageServer> storage_server_  = std::make_unique<mystorage::StorageServer>();
+    //     storage_server_->InitializeConfiguration(threadpool_.get());
+    //     storage_server_->PowerUp();
+    // });
+
     std::thread t1([]()->void{
-        std::unique_ptr<mystorage::StorageServer> storage_server_  = std::make_unique<mystorage::StorageServer>();
-        storage_server_->InitializeConfiguration(threadpool_.get());
-        storage_server_->PowerUp();
+        mystorage::CloudStorageServer cloudstorage(8081, "CloudStorage");
+        cloudstorage.setThreadNum(4);
+        cloudstorage.start();
     });
     
     t1.join();

@@ -15,7 +15,7 @@
 
 #include <regex>
 
-#include "base64.h"
+#include "../../thirdparty/base64.h"
 #include "StorageDataManager.hpp"
 
 extern mystorage::DataManager* storage_data_;
@@ -256,8 +256,7 @@ namespace mystorage
         }
 
         // 文件大小格式化函数
-        static std::string formatSize(uint64_t bytes)
-        {
+        static std::string formatSize(uint64_t bytes){
             /*
                 为文件大小的数字(单位为B)进行格式化，例如：
                 2048B -> 2KB
@@ -375,8 +374,7 @@ namespace mystorage
             return 0;
         }
 
-        static std::string GetETag(const StorageInfo& info)
-        {
+        static std::string GetETag(const StorageInfo& info){
             // 自定义的etag： filename-fsize-mtime
             std::stringstream etag;
             FileUtil fu(info.storage_path_);

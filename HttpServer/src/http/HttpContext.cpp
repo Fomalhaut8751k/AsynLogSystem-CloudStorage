@@ -6,16 +6,17 @@ namespace http
 {
 
 HttpContext::HttpContext():
-    state_(kExpectRequestLine)
+    state_(kExpectRequestLine),
+    maxFileSize_(512 * 1024 * 1024)
 {
     
 }
 
 
 // 将报文解析出来的关键信息封装到HttpRequest对象里面去
-bool HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
+int HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
 {
-    bool ok = true;  // 解析每行请求格式是否正确
+    int ok = 1;  // 解析每行请求格式是否正确
     bool hasMore = true;
     while(hasMore)
     {
@@ -31,7 +32,7 @@ bool HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
             if(crlf)
             {
                 ok = processRequestLine(buf->peek(), crlf);  // 可读区域的起始位置，到crlf行结束符之前
-                if(ok)
+                if(ok == 1)
                 {
                     request_.setReceiveTime(receiveTime);
                     buf->retrieveUntil(crlf+2);  // 包含了crlf,表示这一段已经读取
@@ -81,6 +82,13 @@ bool HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
                             if(request_.contentLength() > 0)
                             {
                                 state_ = kExpectBody;  // 大于0说明需要继续读取body
+
+                                // 补充，限制上传文件的大小
+                                if(request_.contentLength() >= maxFileSize_)
+                                {   // 超过了512MB，就不再读取请求体中的数据
+                                    ok = -1;
+                                    hasMore = false;
+                                }
                             }
                             else
                             {
@@ -91,7 +99,7 @@ bool HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
                         else
                         {
                             // POST/PUT 请求没有 Content-Length, 是HTTP语法错误
-                            ok = false;
+                            ok = 0;
                             hasMore = false;
                         }
                     }
@@ -103,7 +111,7 @@ bool HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
                 }
                 else  // Header行格式错误
                 {
-                    ok = false; 
+                    ok = 0; 
                     hasMore = false;
                 }
                 buf->retrieveUntil(crlf + 2);  // 开始读指针指向下一行数据

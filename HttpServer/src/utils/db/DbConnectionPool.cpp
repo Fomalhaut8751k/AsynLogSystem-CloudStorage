@@ -1,6 +1,6 @@
 #include "../../../include/utils/db/DbConnectionPool.h"
 #include "../../../include/utils/db/DbException.h"
-#include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 
 namespace http
 {
@@ -34,7 +34,7 @@ void DbConnectionPool::init(const std::string& host,
     }
     
     initialized_ = true;
-    logger_->INFO("Database connection pool initialized with " + std::to_string(poolSize) + " connections");
+    LOG_INFO("Database connection pool initialized with %s connections", std::to_string(poolSize).c_str());
 }
 
 // 构造函数
@@ -53,7 +53,8 @@ DbConnectionPool::~DbConnectionPool()
     {
         connections_.pop();
     }
-    logger_->INFO("Database connection pool destroyed");
+    LOG_INFO("Database connection pool destroyed");
+    
 }
 
 // 获取连接
@@ -68,7 +69,7 @@ std::shared_ptr<DbConnection> DbConnectionPool::getConnection()
             {
                 throw DbException("Connection pool not initialized");
             }
-            logger_->INFO("Waiting for available connection...");
+            LOG_INFO("Waiting for available connection...");
             cv_.wait(lock);
         }
 
@@ -81,7 +82,7 @@ std::shared_ptr<DbConnection> DbConnectionPool::getConnection()
         // 在锁外检查连接
         if(!conn->ping())
         {
-            logger_->WARN("Connection lost, attempting to reconnect...");
+            LOG_INFO("Connection lost, attempting to reconnect...");
             conn->reconnect();
         }
 
@@ -95,7 +96,7 @@ std::shared_ptr<DbConnection> DbConnectionPool::getConnection()
     }
     catch(const std::exception& e)
     {
-        logger_->ERROR(std::string("Failed to get connection: ") + e.what());
+        LOG_ERROR("Failed to get connection: %s", e.what());  
         {
             std::lock_guard<std::mutex> lock(mutex_);
             connections_.push(conn);
@@ -147,7 +148,7 @@ void DbConnectionPool::checkConnections()
                     }
                     catch(const std::exception& e)
                     {
-                        logger_->ERROR(std::string("Failed to reconnect: ") + e.what());
+                        LOG_ERROR("Failed to reconnect: %s", e.what());
                     }
                     
                 }
@@ -157,7 +158,7 @@ void DbConnectionPool::checkConnections()
         }
         catch(const std::exception& e)
         {
-            logger_->ERROR(std::string("Error in check thread: ") + e.what());
+            LOG_ERROR("Error in check thread: %s", e.what());
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }

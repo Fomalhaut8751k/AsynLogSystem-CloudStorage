@@ -40,7 +40,7 @@ public:
 
     HttpContext();
 
-    bool parseRequest(Buffer* buf, TimeStamp receiveTime);
+    int parseRequest(Buffer* buf, TimeStamp receiveTime);
     bool gotAll() const { return state_ == kGotAll; }
 
     void reset();
@@ -54,6 +54,7 @@ private:
     HttpRequestParseState state_;
     HttpRequest request_;
 
+    std::uint32_t maxFileSize_;   // 上传文件大小的最大限制
 };
 
 }

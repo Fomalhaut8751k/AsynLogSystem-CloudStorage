@@ -33,12 +33,12 @@ DbConnection::DbConnection(const std::string& host,
             std::unique_ptr<sql::Statement> stmt(conn_->createStatement());
             stmt->execute("SET NAMES utf8mb4");
 
-            logger_->INFO("Database connection established");
+            LOG_INFO("Database connection established");
         }
     }
     catch(const sql::SQLException& e)
     {
-        logger_->ERROR(std::string("Failed to create database connection: ") + e.what());
+        LOG_ERROR("Failed to create database connection: %s", e.what());
         throw DbException(e.what());
     }
     
@@ -54,7 +54,7 @@ DbConnection::~DbConnection()
     {
         // 析构函数不抛出异常
     }
-    logger_->INFO("Database connection closed");
+    LOG_INFO("Database connection closed");
 }
 
 bool DbConnection::ping()  // 添加检测连接是否有效的方法
@@ -68,7 +68,7 @@ bool DbConnection::ping()  // 添加检测连接是否有效的方法
     }
     catch(const sql::SQLException& e)
     {
-        logger_->ERROR(std::string("Ping failed: ") + e.what());
+        LOG_ERROR("Ping failed: %s", e.what());
         return false;
     }
     
@@ -97,7 +97,7 @@ void DbConnection::reconnect()
     }
     catch(const sql::SQLException& e)
     {
-        logger_->ERROR(std::string("Reconnect failed: ") + e.what());
+        LOG_ERROR("Reconnect failed: %s", e.what());
         throw DbException(e.what());
     }
     
@@ -131,7 +131,7 @@ void DbConnection::cleanup()
     }
     catch(const std::exception& e)
     {
-        logger_->WARN(std::string("Error cleaning up connection: ") + e.what());
+        LOG_INFO("Error cleaning up connection: %s", e.what());
         try
         {
             reconnect();

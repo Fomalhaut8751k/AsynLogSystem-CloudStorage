@@ -1,5 +1,6 @@
 #include "../../include/ssl/SslContext.h"
-#include "mymuduo/Alogger.h"
+// #include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 #include <openssl/err.h>
 
 namespace ssl
@@ -54,7 +55,8 @@ bool SslContext::initialize()
     // 设置会话缓存
     setupSessionCache();
 
-    logger_->INFO("SSL context initialized successfully");
+    // logger_->INFO("SSL context initialized successfully");
+    LOG_INFO("SSL context initialized successfully");
     return true;
 }
 
@@ -143,7 +145,8 @@ void SslContext::handleSslError(const char* msg)
 {
     char buf[256];
     ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
-    logger_->ERROR(std::string(msg) + buf);
+    // logger_->ERROR(std::string(msg) + buf);
+    LOG_ERROR("%s %s", msg, buf);
 }
 
 }

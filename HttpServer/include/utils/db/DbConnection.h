@@ -10,7 +10,7 @@
 #include <mysql_driver.h>
 #include <mysql/mysql.h>
 
-#include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 #include "DbException.h"
 #include "mymuduo/noncopyable.h"
 
@@ -47,7 +47,7 @@ public:
         }
         catch(const sql::SQLException& e)
         {
-            logger_->ERROR(std::string("Query failed: ") + e.what() + ", SQL: " + sql);
+            LOG_ERROR("Query failed: %s, SQL: %s", e.what(), sql);
             throw DbException(e.what());
         }  
     }
@@ -65,7 +65,7 @@ public:
         }
         catch(const sql::SQLException& e)
         {
-            logger_->ERROR(std::string("Update failed: ") + e.what() + ", SQL: " + sql);
+            LOG_ERROR("Update failed: %s, SQL: %s", e.what(), sql);
             throw DbException(e.what());
         }
         

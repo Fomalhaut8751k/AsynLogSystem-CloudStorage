@@ -3,9 +3,10 @@
 #include <sstream>
 #include <iostream>
 #include <string>
-#include "mymuduo/Alogger.h"
+// #include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 
-extern ALogger* logger_;
+// extern ALogger* logger_;
 
 namespace http
 {
@@ -25,11 +26,13 @@ void CorsMiddleware::before(HttpRequest& request)
     /*
         在请求进入业务逻辑之前进行拦截和处理
     */
-    logger_->DEBUG("CorsMiddleware::before - Processing request");
+    // logger_->DEBUG("CorsMiddleware::before - Processing request");
+    LOG_DEBUG("CorsMiddleware::before - Processing request");
 
     if(request.method() == HttpRequest::Method::kOptions)  // http请求方法
     {
-        logger_->INFO("Processing CORS preflight request");
+        LOG_INFO("Processing CORS preflight request");
+
         HttpResponse response;
         handlePreflightRequest(request, response);  // 处理预检请求
         throw response;
@@ -38,7 +41,8 @@ void CorsMiddleware::before(HttpRequest& request)
 
 void CorsMiddleware::after(HttpResponse& response)
 {
-    logger_->DEBUG("CorsMiddleware::after - Processing request");
+    // logger_->DEBUG("CorsMiddleware::after - Processing request");
+    LOG_DEBUG("CorsMiddleware::after - Processing request");
 
     // 直接添加CORS头，简化处理逻辑
     if(!config_.allowedOrigins.empty())
@@ -99,14 +103,20 @@ void CorsMiddleware::handlePreflightRequest(const HttpRequest& request, HttpResp
 
     if(!isOriginAllowed(origin))  // 检查是否是允许的来源
     {
-        logger_->WARN("Origin not allowed: " + origin);
+        // logger_->WARN("Origin not allowed: " + origin);
+        LOG_INFO("Origin not allowed: %s", origin.c_str());
+
         response.setStatusCode(HttpResponse::k403Forbidden);  // 禁止访问
         return;
     }
 
     addCorsHeaders(response, origin);
-    response.setStatusCode(HttpResponse::k204NoContent);
-    logger_->INFO("Preflight request processes successfully");
+    // response.setStatusCode(HttpResponse::k204NoContent);
+    response.setStatusLine(request.getVersion(), HttpResponse::k204NoContent, "No Content");
+
+    // logger_->INFO("Preflight request processes successfully");
+    LOG_INFO("Preflight request processes successfully");
+    
 }
 
 // 为 HTTP 响应添加 CORS（跨源资源共享）相关的响应头，允许跨域请求
@@ -140,12 +150,14 @@ void CorsMiddleware::addCorsHeaders(HttpResponse& response, const std::string& o
 
         // 预检请求缓存时间
         response.addHeader("Access-Control-Max-Age", std::to_string(config_.maxAge));
-
-        logger_->DEBUG("CORS headers added successfully");
+        // logger_->DEBUG("CORS headers added successfully");
+        LOG_DEBUG("CORS headers added successfully");
     }
     catch(const std::exception& e)
+        // logger_->ERROR(std::string("Error adding CORS headers: ") + e.what());
     {
-        logger_->ERROR(std::string("Error adding CORS headers: ") + e.what());
+        LOG_ERROR("Error adding CORS headers: %s", e.what());
+        // logger_->ERROR(std::string("Error adding CORS headers: ") + e.what());
     }
     
 }

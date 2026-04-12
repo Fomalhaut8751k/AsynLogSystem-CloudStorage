@@ -2,7 +2,7 @@
 #include "../../include/ssl/SslTypes.h"
 
 #include <openssl/err.h>
-#include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 #include <functional>
 
 namespace ssl
@@ -34,7 +34,8 @@ SslConnection::SslConnection(const TcpConnectionPtr& conn, SslContext* ctx):
     */
     if(!ssl_)
     {
-        logger_->ERROR(std::string("Failed to create SSL object: ") + ERR_error_string(ERR_get_error(), nullptr));
+        // logger_->ERROR(std::string("Failed to create SSL object: ") + ERR_error_string(ERR_get_error(), nullptr));
+        LOG_ERROR("Failed to create SSL object");
         return;
     }
     
@@ -44,7 +45,8 @@ SslConnection::SslConnection(const TcpConnectionPtr& conn, SslContext* ctx):
 
     if(!readBio_ || !writeBio_)
     {
-        logger_->ERROR("Failed to create BIO objects");
+        // logger_->ERROR("Failed to create BIO objects");
+        LOG_ERROR("Failed to create BIO objects");
         SSL_free(ssl_);
         ssl_ = nullptr;
         return;
@@ -81,7 +83,8 @@ void SslConnection::send(const void* data, size_t len)
 {
     if(state_ != SSLState::ESTABLISHED)
     {
-        logger_->ERROR("Cannot send data before SSL handshake is complete");
+        // logger_->ERROR("Cannot send data before SSL handshake is complete");
+        LOG_ERROR("Cannot send data before SSL handshake is complete");
         return;
     }
 
@@ -96,7 +99,8 @@ void SslConnection::send(const void* data, size_t len)
     if(written <= 0)
     {
         int err = SSL_get_error(ssl_, written);
-        logger_->ERROR(std::string("SSL_write failed: ") + ERR_error_string(err, nullptr));
+        // logger_->ERROR(std::string("SSL_write failed: ") + ERR_error_string(err, nullptr));
+        LOG_ERROR("SSL_write failed %s", ERR_error_string(err, nullptr));
         return;
     }
 
@@ -214,14 +218,18 @@ void SslConnection::handleHandshake()
     if(ret == 1)  // 握手成功
     {   // 从SSLState::HANDSHAKE 变成 SSLState::ESTABLISHED 
         state_ = SSLState::ESTABLISHED;
-        logger_->INFO("SSL handshake completed successfully");
-        logger_->INFO(std::string("Using cipher: ") + SSL_get_cipher(ssl_));
-        logger_->INFO(std::string("Protocol version: ") + SSL_get_version(ssl_));
+        // logger_->INFO("SSL handshake completed successfully");
+        LOG_INFO("SSL handshake completed successfully");
+        // logger_->INFO(std::string("Using cipher: ") + SSL_get_cipher(ssl_));
+        LOG_INFO("Using cipher: %s", SSL_get_cipher(ssl_));
+        // logger_->INFO(std::string("Protocol version: ") + SSL_get_version(ssl_));
+        LOG_INFO("Protocol version: %s", SSL_get_version(ssl_));
 
         // 握手完成后，确保设置了正确的回调
         if(!messageCallback_)
         {
-            logger_->WARN("No message callback set after SSL handshake");
+            // logger_->WARN("No message callback set after SSL handshake");
+            LOG_INFO("No message callback set after SSL handshake");
         }
         return;
     }
@@ -238,7 +246,8 @@ void SslConnection::handleHandshake()
             char errBuf[256];
             unsigned long errCode = ERR_get_error();
             ERR_error_string_n(errCode, errBuf, sizeof(errBuf));
-            logger_->ERROR(std::string("SSL handshake failed: ") + errBuf);
+            // logger_->ERROR(std::string("SSL handshake failed: ") + errBuf);
+            LOG_ERROR("SSL handshake failed: %s", errBuf);
             conn_->shutdown();  // 关闭连接
             break;
         }
@@ -287,7 +296,8 @@ void SslConnection::handleError(SSLError error)
         case SSLError::SSL:
         case SSLError::SYSCALL:
         case SSLError::UNKNOWN:
-            logger_->ERROR(std::string("SSL error occurred: ") + ERR_error_string(ERR_get_error(), nullptr));
+            // logger_->ERROR(std::string("SSL error occurred: ") + ERR_error_string(ERR_get_error(), nullptr));
+            LOG_ERROR("SSL error occurred: %s", ERR_error_string(ERR_get_error(), nullptr));
             state_ = SSLState::ERROR;
             conn_->shutdown();
             break;

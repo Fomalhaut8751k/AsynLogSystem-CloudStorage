@@ -1,5 +1,6 @@
 #include "../../include/middleware/MiddlewareChain.h"
-#include "mymuduo/Alogger.h"
+// #include "mymuduo/Alogger.h"
+#include "mymuduo/Logger.h"
 
 namespace http
 {
@@ -35,7 +36,8 @@ void MiddlewareChain::processAfter(HttpResponse& response)
     }
     catch(const std::exception& e)
     {
-        logger_->ERROR(std::string("Error in middleware after processing: ") + e.what());
+        // logger_->ERROR(std::string("Error in middleware after processing: ") + e.what());
+        LOG_ERROR("Error in middleware after processing: %s", e.what());
     }
     
 }
