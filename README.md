@@ -908,8 +908,59 @@
 
     ***如果文件太大(比内存大)但是磁盘写的下***
 
+    最顶层是 `onMessage(Buffer* buffer)` , 数据在`buffer`当中。每次调用时都尝试解析其中的报文，如果有完整的一部分就解析，解析到所有部分(包括请求体)都解析完成且无误，才会调用 `onRequest()`，处理中间件(请求后) -> 对应的路由函数 -> 处理中间件(响应前)。在路由函数中，会根据请求头中的文件名，文件存储位置等信息创建文件，并把完整的请求体中的文件内容写入。
+
+    思路: 
+
+    在解析时发现已经解析完请求头了，准备解析请求体前(`state_ = kExpectBody`)，在解析请求体时，只有当Buffer(可扩容)有完整的请求体信息时才会进行读取。
+    ```cpp
+     // 检查缓冲区中是否有足够的数据
+    if(buf->readableBytes() < request_.contentLength()){
+        hasMore = false;  // 数据不完整，等待更多数据
+        return true;
+    }
+    // 只读取Content-Length指定的长度
+    std::string body(buf->peek(), buf->peek() + request_.contentLength());
+    request_.setBody(body);
+
+    // 准备移动读指针
+    buf->retrieve(request_.contentLength());
+
+    state_ = kGotAll;
+    hasMore = false;
+    ```
+
+    因此我们可以解析完请求头后，通过content-length判断是否需要分块写入，如果需要，就获取缓冲区中的请求体片段，然后一点点的通过追加的形式写入文件当中。由于`onRequest()`处理的是整个请求报文，因此可以直接把请求体的片段视为整个请求体传给`onRequest()`让他处理。
+
+    ```cpp
+    if(context->gotHeader() && context->request().contentLength() > 256 * 1024 * 1024){
+        // 每次都直接读取buffer中的一点数据，而不是等待完整的请求体后再解析
+        std::string part = std::string(buf->peek(), buf->readableBytes());
+        buf->retrieve(buf->readableBytes());
+        context->request().setBody(part);
+        onRequest(conn, context->request());
+    }
+    ```
+
+    ~~整体的逻辑上没有什么问题，但是由于在UTF-8编码中中文字符占三个字节，如果末尾的字符是中文且没有完全取到(比如本次从socket缓冲区中获取到的只有前两个字符)，那么在写入文件中后，会显示为乱码，即便下一次读取时把剩下的部分追加到文件内容中，也无法正常显示。如图所示，红色部分是同一行的内容，在很多个nul之后才是下一次读取的内容，因为“三”这个汉字的读取不完整~~
+
+    缺了一部分后面追加是能够正常处理的，问题在于你分块读取但是在写入的时候长度使用的`Content-Length`，修改后大部分问题都解决了。
+
+    ![](img/errorline_1.png)
+
+    ![](img/errorline_2.png)
+
+    尝试上传一个4.43 GB的文件，上传过程如下，即便内存只有4G，可用内存可能更少，也能够进行传输。
+
+    ![](img/transform_a_4g_file.png)
 
 
+37. 2026.4.14
 
+    下载功能。因为AIHttpServer中，路径后面是不带任何参数的，而下载认为中，会把文件名携带在路径后面，如果使用静态路由匹配，就不能够匹配上。
 
+    ```txt
+    url: 1 /download/unet.txt
+    ```
 
+    因此我们需要使用动态路由匹配。

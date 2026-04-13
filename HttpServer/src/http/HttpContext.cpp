@@ -6,10 +6,11 @@ namespace http
 {
 
 HttpContext::HttpContext():
-    state_(kExpectRequestLine),
-    maxFileSize_(512 * 1024 * 1024)
+    state_(kExpectRequestLine)
 {
-    
+    maxFileSize_ = 1;
+    maxFileSize_ *= (1024 * 1024);
+    maxFileSize_ *= (8 * 1024);
 }
 
 
@@ -78,7 +79,7 @@ int HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
                         std::string contentLength = request_.getHeader("Content-Length");
                         if(!contentLength.empty())
                         {
-                            request_.setContentLength(std::stoi(contentLength));
+                            request_.setContentLength(std::stoull(contentLength));
                             if(request_.contentLength() > 0)
                             {
                                 state_ = kExpectBody;  // 大于0说明需要继续读取body
@@ -124,12 +125,13 @@ int HttpContext::parseRequest(Buffer* buf, TimeStamp receiveTime)
         else if(state_ == kExpectBody)
         {
             // 检查缓冲区中是否有足够的数据
-            if(buf->readableBytes() < request_.contentLength())
-            {
+            if(buf->readableBytes() < request_.contentLength()){
+                // std::cerr << std::string(buf->peek(), buf->readableBytes()) << std::endl;
+                // buf->retrieve(buf->readableBytes());
                 hasMore = false;  // 数据不完整，等待更多数据
                 return true;
             }
-
+            
             // 只读取Content-Length指定的长度
             std::string body(buf->peek(), buf->peek() + request_.contentLength());
             request_.setBody(body);
@@ -162,7 +164,7 @@ bool HttpContext::processRequestLine(const char* begin, const char* end)
     bool succeed = false;
     const char* start = begin;
     const char* space = std::find(start, end, ' ');  // 找到第一个空格
-    if(space != end && request_.setMethod(start, space));  // 左闭右开，故截取的就是POST
+    if(space != end && request_.setMethod(start, space))  // 左闭右开，故截取的就是POST
     {
         start = space + 1;
         space = std::find(start, end, ' '); 

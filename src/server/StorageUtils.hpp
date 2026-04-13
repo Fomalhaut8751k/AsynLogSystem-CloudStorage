@@ -189,18 +189,30 @@ namespace mystorage
             return GetPosLen(content, 0, FileSize());
         }
 
-        // 写文件
-        int SetContent(const char* content, size_t len)
-        {
+        // 写文件(从头开始，如果文件存在就清空)
+        int SetContent(const char* content, size_t len){
             std::ofstream file(filename_.c_str(), std::ios::binary);
-            if(!file.is_open())
-            {
+            if(!file.is_open()){
                 mylog::GetLogger("default")->Log({"file \" " +  filename_  + "\" open failed", mylog::LogLevel::WARN});
                 return -1;
             }
             file.write(content, len);
-            if(!file.good())
-            {
+            if(!file.good()){
+                mylog::GetLogger("default")->Log({"file \" " +  filename_  + "\" set content error", mylog::LogLevel::WARN});
+            }
+            file.close();
+            return 0;
+        }
+
+        // 追加写文件
+        int SetContentApp(const char* content, size_t len){
+            std::ofstream file(filename_.c_str(), std::ios::binary | std::ios::app);
+            if(!file.is_open()){
+                mylog::GetLogger("default")->Log({"file \" " +  filename_  + "\" open failed", mylog::LogLevel::WARN});
+                return -1;
+            }
+            file.write(content, len);
+            if(!file.good()){
                 mylog::GetLogger("default")->Log({"file \" " +  filename_  + "\" set content error", mylog::LogLevel::WARN});
             }
             file.close();
@@ -208,7 +220,7 @@ namespace mystorage
         }
 
 
-        // 压缩文件
+        // 压缩文件并从头写入
         int Compress(std::string& content, int format)
         {
             std::string packed = bundle::pack(format, content);  // 压缩后的数据
@@ -219,6 +231,25 @@ namespace mystorage
             }
             FileUtil f(filename_);
             if(f.SetContent(packed.c_str(), packed.size()) == -1)   // 写入压缩包文件
+            {
+                mylog::GetLogger("default")->Log({"file " + filename_ + \
+                        " compress packed size error: " + std::to_string(packed.size()), mylog::LogLevel::WARN});
+                return -1;
+            }
+            return 0;
+        }
+
+        // 压缩文件并追加写入
+        int CompressApp(std::string& content, int format)
+        {
+            std::string packed = bundle::pack(format, content);  // 压缩后的数据
+            if(packed.size() == 0)
+            {
+                mylog::GetLogger("default")->Log({"compress packed size error", mylog::LogLevel::WARN});
+                return -1;
+            }
+            FileUtil f(filename_);
+            if(f.SetContentApp(packed.c_str(), packed.size()) == -1)   // 写入压缩包文件
             {
                 mylog::GetLogger("default")->Log({"file " + filename_ + \
                         " compress packed size error: " + std::to_string(packed.size()), mylog::LogLevel::WARN});

@@ -11,7 +11,6 @@
 
 namespace http
 {
-
 class HttpRequest
 {
 public:

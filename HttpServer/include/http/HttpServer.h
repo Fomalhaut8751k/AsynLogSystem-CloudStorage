@@ -59,7 +59,7 @@ public:
     void Post(const std::string& path, router::Router::HandlerPtr handler) { router_.registerHandler(HttpRequest::kPost, path, handler); }
 
     // 注册动态路由处理器
-    void addRoute(HttpRequest::Method method, const std::string& path, router::Router::HandlerPtr& handler) { router_.addRegexHandler(method, path, handler); }
+    void addRoute(HttpRequest::Method method, const std::string& path, const router::Router::HandlerPtr& handler) { router_.addRegexHandler(method, path, handler); }
     // 注册动态路由处理函数
     void addRoute(HttpRequest::Method method, const std::string& path, const router::Router::HandlerCallback& callback) { router_.addRegexCallback(method, path, callback); }
 

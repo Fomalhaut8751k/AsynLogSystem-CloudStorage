@@ -16,6 +16,44 @@ public:
     }
 };
 
+size_t findLastCompleteCharBoundary(const unsigned char* data, size_t len) {
+    if (len == 0) return 0;
+    
+    // 从末尾向前查找，最多检查 4 个字节
+    for (int i = 0; i < 4 && i < (int)len; i++) {
+        unsigned char c = data[len - 1 - i];
+        
+        // 找到 ASCII 字符（最高位为0）
+        if ((c & 0x80) == 0) {
+            // ASCII 是完整字符，返回这个字符的末尾位置
+            return len - i;
+        }
+        
+        // 找到 UTF-8 起始字节
+        if ((c & 0xC0) == 0xC0) {
+            // 计算这个字符应该有多少字节
+            int charLen = 1;
+            if ((c & 0xE0) == 0xC0) charLen = 2;
+            else if ((c & 0xF0) == 0xE0) charLen = 3;
+            else if ((c & 0xF8) == 0xF0) charLen = 4;
+            
+            // 检查这个字符是否完整
+            if (i + 1 >= charLen) {
+                // 字符完整，返回这个字符的末尾位置
+                return len - i;
+            } else {
+                // 字符不完整，返回这个字符的开始位置（即回退到上一个字符）
+                return len - i - 1;
+            }
+        }
+        
+        // 如果是续字节（10xxxxxx），继续往前找
+    }
+    
+    // 没找到有效边界，返回 0
+    return 0;
+}
+
 // 默认的http回应函数
 void defaultHttpCallback(const HttpRequest&, HttpResponse* resp)
 {
@@ -94,25 +132,21 @@ void HttpServer::onConnection(const TcpConnectionPtr& conn)
 
 void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp receiveTime)
 {
-    try
-    {
+    try{
         // 这层判断只是代表是否支持ssl
-        if(useSSL_)
-        {
+        if(useSSL_){
             // logger_->INFO("onMessage useSSL_ is true");
             LOG_INFO("onMessage useSSL_ is true");
             // 1. 查找对应的SSL连接
             auto it = sslConns_.find(conn);
-            if(it != sslConns_.end())
-            {
+            if(it != sslConns_.end()){
                 // logger_->INFO("onMessage sslConns_ is not empty");
                 LOG_INFO("onMessage sslConns_ is not empty");
                 // 2. SSL连接处理数据
                 it->second->onRead(conn, buf, receiveTime);
 
                 // 3. 如果SSL握手还未完成，直接返回
-                if(!it->second->isHandshakeCompleted())
-                {
+                if(!it->second->isHandshakeCompleted()){
                     // logger_->INFO("onMessage sslConns_ is not empty");
                     LOG_INFO("onMessage sslConns_ is not empty");
                     return;
@@ -120,8 +154,7 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
 
                 // 4. 从SSL连接的解密缓冲区获取数据
                 Buffer* decryptedBuf = it->second->getDecryptedBuffer();
-                if(decryptedBuf->readableBytes() == 0)
-                {
+                if(decryptedBuf->readableBytes() == 0){
                     return;  // 没有解密后的数据
                 }
 
@@ -144,29 +177,33 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
             else{
                 response = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
             }
-            if(useSSL_)
-            {
+            if(useSSL_){
                 auto it = sslConns_.find(conn);
-                if(it != sslConns_.end())
-                {   
+                if(it != sslConns_.end()){   
                     it->second->send(response.c_str(), response.length());
                 }
-                else
-                {
+                else{
                     conn->send(response.c_str());
                 }
             }
-            else
-            {
+            else{
                 conn->send(response.c_str());
             }
             conn->shutdown();
         }
+        // 如果解析完请求头，发现文件大小大于256MB(实际可以设置比内存还大的值)
+        if(context->gotHeader() && context->request().contentLength() > 256 * 1024 * 1024){
+            LOG_INFO("The file is too large; initiating segmented upload");
+            // 每次都直接读取buffer中的一点数据，而不是等待完整的请求体后再解析
+            size_t len = buf->readableBytes();
+            if(len == 0) return;     
+            std::string part = std::string(buf->peek(), buf->readableBytes());
+            buf->retrieve(buf->readableBytes());
+            context->request().setBody(part);
+            onRequest(conn, context->request());
+        }
         // 如果buf缓冲区中解析出一个完成的数据包才封装响应报文
-        if(context->gotAll())
-        {
-            // context->request().showAll();
-            std::string requestBody = context->request().getBody();
+        if(context->gotAll()){
             onRequest(conn, context->request());
             context->reset();
         }
@@ -176,7 +213,7 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
         // 捕获异常，返回错误信息
         LOG_ERROR("Exception in onMessage: %s", e.what());
         conn->send("HTTP/1.1 400 Bad Request\r\n\r\n");
-        if(e.what() == "The uploaded file is too large and has been rejected"){
+        if(strcmp(e.what(), "The uploaded file is too large and has been rejected") == 0){
             conn->stopRead();
         }
         conn->shutdown();
