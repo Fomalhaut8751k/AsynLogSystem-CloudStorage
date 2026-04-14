@@ -38,6 +38,12 @@ public:
     bool closeConnection() const { return closeConnection_; }
 
     void addHeader(const std::string& key, const std::string& value) { headers_[key] = value; }
+    std::string getHeader(const std::string& key) {
+        if(headers_.find(key) != headers_.end()){
+            return headers_[key];
+        }
+        return "";
+    }
 
     void setContentType(const std::string& contentType) { addHeader("Content-Type", contentType); } 
     void setContentLength(uint64_t length) { addHeader("Content-Length", std::to_string(length)); }
@@ -51,6 +57,20 @@ public:
     void setErrorHeader();
 
     void appendToBuffer(Buffer* outputBuf) const;
+    void appendToBufferWithoutBody(Buffer* outputBuf) const;
+    void appendToBufferWithBody(Buffer* outputBuf) const;
+
+    void showAll() const{
+        std::cerr << "HTTP Version: " << httpVersion_ << std::endl;
+        std::cerr << "statusCode_: " << statusCode_ << std::endl;
+        std::cerr << "statusMessage_: " << statusMessage_ << std::endl;
+        for(auto it: headers_){
+            std::cerr << it.first << ": " << it.second << std::endl;
+        }
+        std::cerr << "body_: " << body_ << std::endl;
+    }
+
+    std::string getBody() const { return body_; }
 
 private:
     std::string httpVersion_;

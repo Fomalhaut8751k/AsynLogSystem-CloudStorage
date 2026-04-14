@@ -58,6 +58,9 @@ public:
     void Post(const std::string& path, const HttpCallback& cb) { router_.registerCallback(HttpRequest::kPost, path, cb); }
     void Post(const std::string& path, router::Router::HandlerPtr handler) { router_.registerHandler(HttpRequest::kPost, path, handler); }
 
+    void Delete(const std::string& path, const HttpCallback& cb) { router_.registerCallback(HttpRequest::kDelete, path, cb); }
+    void Delete(const std::string& path, router::Router::HandlerPtr handler) { router_.registerHandler(HttpRequest::kDelete, path, handler); }
+
     // 注册动态路由处理器
     void addRoute(HttpRequest::Method method, const std::string& path, const router::Router::HandlerPtr& handler) { router_.addRegexHandler(method, path, handler); }
     // 注册动态路由处理函数
@@ -82,6 +85,7 @@ private:
     void onConnection(const TcpConnectionPtr& conn);
     void onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp receiveTime);
     void onRequest(const TcpConnectionPtr&, const HttpRequest&);
+    std::uint64_t onRequestForDownload(const TcpConnectionPtr&, const HttpRequest&);
     void handleRequest(const HttpRequest& req, HttpResponse* resp);
 
     InetAddress listenAddr_;  // 监听地址
@@ -97,6 +101,7 @@ private:
     /*
         SslConnection里面就有TcpConnectionPtr conn_;     
     */
+   std::uint64_t chunkDownloadSizeThreshold;
 };
 
 

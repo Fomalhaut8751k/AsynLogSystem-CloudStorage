@@ -125,7 +125,8 @@ namespace mystorage
                     StorageInfo info;
                     info.atime_ = root[i]["atime_"].asInt();
                     info.mtime_ = root[i]["mtime_"].asInt();
-                    info.fsize_ = root[i]["fsize_"].asInt();
+                    // info.fsize_ = root[i]["fsize_"].asInt();
+                    info.fsize_ = root[i]["fsize_"].asInt64();
                     info.storage_path_ = root[i]["storage_path_"].asString();
                     info.url_ = root[i]["url_"].asString();
                     Insert(info);
@@ -306,8 +307,7 @@ namespace mystorage
         int GetAll(std::vector<StorageInfo> *arry)
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            for(std::pair<std::string, StorageInfo> item: table_)
-            {
+            for(std::pair<std::string, StorageInfo> item: table_){
                 arry->emplace_back(item.second);
             }
             return 0;

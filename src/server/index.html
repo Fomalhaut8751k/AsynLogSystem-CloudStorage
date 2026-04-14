@@ -11,6 +11,8 @@
             --secondary-color: #3498db;
             --background: #f5f6fa;
             --card-bg: #ffffff;
+            --danger-color: #e74c3c;
+            --danger-hover: #c0392b;
         }
 
         * {
@@ -115,12 +117,15 @@
             justify-content: space-between;
             padding: 1rem;
             border-bottom: 1px solid #eee;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .file-info {
             display: flex;
             gap: 1rem;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .file-type {
@@ -128,6 +133,88 @@
             padding: 0.3rem 0.8rem;
             border-radius: 5px;
             font-size: 0.9rem;
+        }
+
+        .file-size {
+            background: #e8f4f8;
+            padding: 0.3rem 0.8rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            color: #2980b9;
+        }
+
+        .file-time {
+            background: #fef9e7;
+            padding: 0.3rem 0.8rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            color: #d4ac0d;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-download {
+            background: var(--secondary-color);
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .btn-delete {
+            background: var(--danger-color);
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .btn-delete:hover {
+            background: var(--danger-hover);
+        }
+
+        /* 下载进度条样式 */
+        .download-progress {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .progress-bar {
+            width: 300px;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: var(--secondary-color);
+            transition: width 0.3s;
+        }
+
+        /* Toast 提示样式 */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 10000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
     </style>
 </head>
@@ -163,16 +250,209 @@
         </div>
 
         <!-- 文件列表动态插入点 -->
-        {{FILE_LIST}}
+        <div id="fileListContainer">{{FILE_LIST}}</div>
     </div>
 
     <script>
         // 动态配置注入
         const config = {
-            // backendUrl: '{{BACKEND_URL}}'
-            backendUrl: 'http://172.30.173.24:8081'
+            backendUrl: '{{BACKEND_URL}}'
         };
 
+        // 如果后端没有替换 {{BACKEND_URL}}，使用默认值
+        if (config.backendUrl === '{{BACKEND_URL}}') {
+            config.backendUrl = 'http://172.30.173.24:8081';
+        }
+
+        // ========== 辅助函数 ==========
+        
+        // 显示短暂提示（Toast）
+        function showToast(message, type = 'info') {
+            let toast = document.getElementById('toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'toast';
+                document.body.appendChild(toast);
+            }
+            
+            // 根据类型设置背景色
+            if (type === 'warning') {
+                toast.style.background = '#f39c12';
+            } else if (type === 'error') {
+                toast.style.background = '#e74c3c';
+            } else {
+                toast.style.background = '#333';
+            }
+            
+            toast.style.color = 'white';
+            toast.textContent = message;
+            toast.style.opacity = '1';
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 3000);
+        }
+
+        // 格式化文件大小
+        function formatSize(bytes) {
+            if (bytes === 0 || !bytes || isNaN(bytes)) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 格式化时间戳
+        function formatTime(timestamp) {
+            if (!timestamp) return '未知';
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString('zh-CN');
+        }
+
+        // 简单的防XSS转义函数
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        // 显示下载进度提示
+        function showDownloadProgress(fileName) {
+            let progressDiv = document.getElementById('downloadProgress');
+            if (!progressDiv) {
+                progressDiv = document.createElement('div');
+                progressDiv.id = 'downloadProgress';
+                progressDiv.className = 'download-progress';
+                progressDiv.innerHTML = `
+                    <div>
+                        <p>正在下载: <strong id="downloadFileName"></strong></p>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="downloadProgressFill"></div>
+                        </div>
+                        <p id="downloadStatus">准备下载...</p>
+                    </div>
+                `;
+                document.body.appendChild(progressDiv);
+            }
+            
+            document.getElementById('downloadFileName').textContent = fileName;
+            document.getElementById('downloadProgressFill').style.width = '30%';
+            document.getElementById('downloadStatus').textContent = '正在下载文件...';
+            progressDiv.style.display = 'block';
+        }
+
+        // 隐藏下载进度提示
+        function hideDownloadProgress() {
+            const progressDiv = document.getElementById('downloadProgress');
+            if (progressDiv) {
+                progressDiv.style.display = 'none';
+            }
+        }
+
+        // ========== 核心功能函数 ==========
+        
+        // 删除文件函数
+        async function deleteFile(fileName) {
+            if (!confirm(`确定要删除文件 "${fileName}" 吗？`)) {
+                return;
+            }
+
+            try {
+                const encodedFileName = btoa(unescape(encodeURIComponent(fileName)));
+                console.log("删除文件编码结果:", encodedFileName);
+
+                const response = await fetch(`${config.backendUrl}/remove`, {
+                    method: 'DELETE',
+                    headers: {
+                        'FileName': encodedFileName
+                    }
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const errorText = await response.text();
+                    alert(`删除失败: ${response.status} - ${errorText}`);
+                }
+            } catch (error) {
+                console.error('删除错误:', error);
+                alert('网络连接失败，无法删除文件');
+            }
+        }
+
+        // 下载文件函数（修改后：大小不匹配时只提示，不弹确认框）
+        async function downloadFile(fileName, fileSize) {
+            console.log(`开始下载文件: ${fileName}, 大小参数:`, fileSize, typeof fileSize);
+            
+            // 安全地处理 fileSize 参数
+            let sizeStr = '0';
+            if (fileSize !== undefined && fileSize !== null && fileSize !== '') {
+                sizeStr = String(fileSize);
+            } else {
+                console.warn(`文件 ${fileName} 的大小信息缺失，将传递 0 给服务端`);
+            }
+            
+            try {
+                // 对文件名进行 Base64 编码
+                const encodedFileName = btoa(unescape(encodeURIComponent(fileName)));
+                
+                // 显示下载进度提示
+                showDownloadProgress(fileName);
+                
+                const response = await fetch(`${config.backendUrl}/download`, {
+                    method: 'GET',
+                    headers: {
+                        'FileName': encodedFileName,
+                        'FileSize': sizeStr
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`下载失败 (${response.status}): ${errorText}`);
+                }
+                
+                // 获取文件 blob
+                const blob = await response.blob();
+                
+                // 验证下载的文件大小是否匹配（仅当有有效大小时）
+                const expectedSize = parseInt(sizeStr, 10);
+                if (!isNaN(expectedSize) && expectedSize > 0 && blob.size !== expectedSize) {
+                    console.warn(`文件大小不匹配: 期望 ${expectedSize}, 实际 ${blob.size}`);
+                    // 只显示 Toast 提示，不弹确认框，直接继续下载
+                    showToast(`文件大小不匹配，已继续保存\n期望: ${formatSize(expectedSize)}\n实际: ${formatSize(blob.size)}`, 'warning');
+                }
+                
+                // 创建下载链接（无论大小是否匹配都继续）
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                // 清理 URL 对象
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                hideDownloadProgress();
+                console.log(`文件下载完成: ${fileName}`);
+                showToast(`文件 "${fileName}" 下载完成`, 'info');
+                
+            } catch (error) {
+                console.error('下载错误:', error);
+                hideDownloadProgress();
+                alert(`下载失败: ${error.message}`);
+            }
+        }
+
+        // 上传文件函数
         async function uploadFile() {
             const fileInput = document.getElementById('fileInput');
             const storageType = document.querySelector('input[name="storageType"]:checked').value;
@@ -183,16 +463,18 @@
                 return;
             }
 
-            // // Base64 编码
+            // Base64 编码
             const encodedFilename = btoa(unescape(encodeURIComponent(file.name)));
             console.log("Base64 编码结果:", encodedFilename);
+            console.log("文件大小:", file.size, "bytes");
 
             try {
                 const response = await fetch(`${config.backendUrl}/upload`, {
                     method: 'POST',
                     headers: {
                         'StorageType': storageType,
-                        'FileName': encodedFilename // 使用 Base64 编码
+                        'FileName': encodedFilename,
+                        'FileSize': String(file.size)
                     },
                     body: file
                 });
@@ -200,7 +482,8 @@
                 if (response.ok) {
                     location.reload();
                 } else {
-                    alert(`上传失败: ${response.status}`);
+                    const errorText = await response.text();
+                    alert(`上传失败: ${response.status} - ${errorText}`);
                 }
             } catch (error) {
                 console.error('上传错误:', error);
@@ -208,9 +491,41 @@
             }
         }
 
-        function downloadFile(fileId) {
-            window.location = `${config.backendUrl}/download?id=${fileId}`;
+        // 渲染文件列表函数
+        function renderFileList(files) {
+            const container = document.getElementById('fileListContainer');
+            if (!files || files.length === 0) {
+                container.innerHTML = '<div class="file-list"><p style="text-align: center; color: #999;">暂无文件</p></div>';
+                return;
+            }
+
+            let html = '<div class="file-list"><h2>📋 文件列表</h2>';
+            files.forEach(file => {
+                const fileName = file.name || file;
+                const fileType = fileName.split('.').pop().toUpperCase();
+                const fileSize = file.size || file.fsize_ || 0;
+                const fileTime = file.time || file.mtime_ || null;
+                
+                html += `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <span>📄 ${escapeHtml(fileName)}</span>
+                            <span class="file-type">${fileType}</span>
+                            <span class="file-size">💾 ${formatSize(fileSize)}</span>
+                            ${fileTime ? `<span class="file-time">🕒 ${formatTime(fileTime)}</span>` : ''}
+                        </div>
+                        <div class="button-group">
+                            <button class="btn-download" onclick="downloadFile('${escapeHtml(fileName)}', '${fileSize}')">📥 下载</button>
+                            <button class="btn-delete" onclick="deleteFile('${escapeHtml(fileName)}')">🗑️ 删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
         }
+
+        console.log("页面加载完成，所有函数已定义");
     </script>
 </body>
 

@@ -30,6 +30,7 @@ void Router::registerCallback(HttpRequest::Method method, const std::string &pat
 // 注册动态路由处理器
 void Router::addRegexHandler(HttpRequest::Method method, const std::string &path, HandlerPtr handler)
 {
+    // httpServer_.addRoute(http::HttpRequest::kGet, "/download/(.+)", downloadhandler); 会走这一段
     std::regex pathRegex = convertToRegex(path);
     regexHandlers_.emplace_back(method, pathRegex, handler);
 }

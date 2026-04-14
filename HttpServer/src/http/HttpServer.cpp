@@ -67,9 +67,11 @@ HttpServer::HttpServer(int port, const std::string& name, bool useSSL, TcpServer
     listenAddr_(port, "0.0.0.0"),
     server_(&mainLoop_, listenAddr_, name, option),
     useSSL_(useSSL),
+    chunkDownloadSizeThreshold(1024 * 1024),
     httpCallback_(std::bind(&HttpServer::handleRequest, this, std::placeholders::_1, std::placeholders::_2))
 {
     initialize();
+    chunkDownloadSizeThreshold *= 1024;  // 一个G就需要分块传输
 }
 
 // 服务器运行函数
@@ -228,11 +230,53 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
     // std::cout << req.getVersion() << " " << close << std::endl;
     HttpResponse response(close);
 
+    // 对于下载的特殊处理
+    if(req.method() == HttpRequest::kGet && req.path() == "/download"){
+        std::uint64_t file_size = std::stoull(req.getHeader("FileSize"));
+        // 如果文件太大，就需要分多次来写入socket缓冲区
+        // if(file_size >= chunkDownloadSizeThreshold){
+        if(file_size >= 1024 * 1024){
+            // 先把空行，请求头，请求行封装了。
+            Buffer buf;
+            response.setBody("chunk0");
+            LOG_INFO("The file to be downloaded is too large and will be transmitted in chunks");
+            httpCallback_(req, &response);
+            // response.showAll();
+            response.appendToBufferWithoutBody(&buf);
+            conn->send(&buf);  // 先发送状态行，响应头和空行
+
+            while(1){
+                response.setBody("chunk1");
+                httpCallback_(req, &response);
+                response.appendToBufferWithBody(&buf);
+                conn->send(&buf);
+                
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+                // 每次读取后，会更新已经读取的长度
+                uint64_t haveSendBit = std::stoull(response.getHeader("pos"));
+                LOG_INFO("Number of downloaded bytes / total number of bytes is %lu / %lu", haveSendBit, file_size);
+                if(haveSendBit >= file_size){
+                    break;
+                }
+                
+            }
+
+            response.setCloseConnection(close);
+            if(response.closeConnection()){
+                conn->shutdown();
+            }
+
+            return;
+        }
+    }
+    
+    Buffer buf;
     // 根据请求报文信息来封装响应报文对象
     httpCallback_(req, &response);  // 执行onHttpCallback函数
 
     // 可以给response设置一个成员，判断是否请求的是文件，如果是文件设置为true，并且存在文件位置在这里send出去
-    Buffer buf;
+    
     response.appendToBuffer(&buf);
     // 打印完整的响应内容用于测试
     // logger_->INFO("Sending response:\n" + std::string(buf.peek(), static_cast<int>(buf.readableBytes())));
@@ -245,6 +289,10 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
     {
         conn->shutdown();
     }
+}
+
+std::uint64_t HttpServer::onRequestForDownload(const TcpConnectionPtr&, const HttpRequest&){
+
 }
 
 // 执行请求对应的路由处理函数

@@ -56,35 +56,93 @@ namespace mystorage
         }
     
         // 前端代码处理函数，在渲染函数中直接处理StorageInfo
+        /*
+            std::string generateModernFileList(const std::vector<StorageInfo>& files){
+                std::stringstream ss;
+                ss << "<div class='file-list'><h3>已上传文件</h3>";
+
+                for(const auto& file: files)  // file的类型: StorageInfo
+                {
+                    std::string filename = FileUtil(file.storage_path_).FileName();  // 通过StorageInfo中记录的文件的存储地址，获取文件的名字(../../filename.xx)
+
+                    // 从路径中解析存储类型(../deep/.., ../low/..)
+                    std::string storage_type = "low";
+                    if(file.storage_path_.find("deep") != std::string::npos)
+                        storage_type = "deep";
+
+                    ss << "<div class='file-item'>"
+                    << "<div class='file-info'>"
+                    << "<span>📄" << filename << "</span>"
+                    << "<span class='file-type'>"
+                    << (storage_type == "deep" ? "深度存储" : "普通存储")
+                    << "</span>"
+                    << "<span>" << formatSize(file.fsize_) << "</span>"
+                    << "<span>" << TimetoStr(file.mtime_) << "</span>"
+                    << "</div>"
+                    << "<button onclick=\"window.location='" << file.url_ << "'\">⬇️ 下载</button>"
+                    << "</div>";
+
+                }
+
+                ss << "</div>";
+                return ss.str();
+            }
+
+        */
+        
         std::string generateModernFileList(const std::vector<StorageInfo>& files){
             std::stringstream ss;
             ss << "<div class='file-list'><h3>已上传文件</h3>";
 
-            for(const auto& file: files)  // file的类型: StorageInfo
-            {
-                std::string filename = FileUtil(file.storage_path_).FileName();  // 通过StorageInfo中记录的文件的存储地址，获取文件的名字(../../filename.xx)
-
-                // 从路径中解析存储类型(../deep/.., ../low/..)
+            for(const auto& file: files) {
+                std::string filename = FileUtil(file.storage_path_).FileName();
+                
+                // 从路径中解析存储类型
                 std::string storage_type = "low";
                 if(file.storage_path_.find("deep") != std::string::npos)
                     storage_type = "deep";
-
+                
+                // 【关键】获取文件大小（原始字节数，不是格式化后的字符串）
+                uint64_t file_size_bytes = file.fsize_;  // 确保这是原始字节数
+                
+                // 调试输出
+                // std::cout << "生成文件列表项: " << filename 
+                //         << ", 大小(字节): " << file_size_bytes << std::endl;
+                
                 ss << "<div class='file-item'>"
-                   << "<div class='file-info'>"
-                   << "<span>📄" << filename << "</span>"
-                   << "<span class='file-type'>"
-                   << (storage_type == "deep" ? "深度存储" : "普通存储")
-                   << "</span>"
-                   << "<span>" << formatSize(file.fsize_) << "</span>"
-                   << "<span>" << TimetoStr(file.mtime_) << "</span>"
-                   << "</div>"
-                   << "<button onclick=\"window.location='" << file.url_ << "'\">⬇️ 下载</button>"
-                   << "</div>";
-
+                << "<div class='file-info'>"
+                << "<span>📄 " << filename << "</span>"
+                << "<span class='file-type'>"
+                << (storage_type == "deep" ? "深度存储" : "普通存储")
+                << "</span>"
+                << "<span class='file-size'>💾 " << formatSize(file_size_bytes) << "</span>"
+                << "<span class='file-time'>🕒 " << TimetoStr(file.mtime_) << "</span>"
+                << "</div>"
+                << "<div class='button-group'>"
+                << "<button class='btn-download' onclick=\"downloadFile('" << escapeJs(filename) << "', '" << file_size_bytes << "')\">📥 下载</button>"
+                //                                                          ^^^^^^^^^^^^^^^^
+                //                                            传递原始字节数，不是格式化字符串
+                << "<button class='btn-delete' onclick=\"deleteFile('" << escapeJs(filename) << "')\">🗑️ 删除</button>"
+                << "</div>"
+                << "</div>";
             }
-
+            
             ss << "</div>";
             return ss.str();
+        }
+
+        // 辅助函数：转义 JavaScript 字符串
+        std::string escapeJs(const std::string& str) {
+            std::string result;
+            for (char c : str) {
+                if (c == '\'') result += "\\'";
+                else if (c == '"') result += "\\\"";
+                else if (c == '\\') result += "\\\\";
+                else if (c == '\n') result += "\\n";
+                else if (c == '\r') result += "\\r";
+                else result += c;
+            }
+            return result;
         }
 
         // ETAG协商缓存
@@ -119,7 +177,7 @@ namespace mystorage
                 }else if(path == "/list"){  // 把文件列表发送给客户端
                     
                 }else if(path == "/remove"){  // 删除文件
-
+                    server_->Remove(req, resp);
                 }else{
 
                 }
@@ -224,7 +282,12 @@ namespace mystorage
             json successResp;
             successResp["status"] = "success";
             successResp["message"] = "File uploaded successfully, filename: " + filename;
+            resp->addHeader("Content-Type", "application/json");
+            resp->setBody("{\"status\":\"success\",\"message\":\"File uploaded successfully\",\"filename\":\"" + filename + "\"}\n");
+            
             resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+            resp->setContentType("text/html;charset=utf-8");
+            
             resp->setCloseConnection(false);
             
             mylog::GetLogger(logger_name_)->Info("Upload finishs");
@@ -234,10 +297,12 @@ namespace mystorage
         // 在浏览器展示所有的StorageInfo
         int ListShow(const http::HttpRequest& req, http::HttpResponse* resp){
             mylog::GetLogger(logger_name_)->Info("ListShow()");
+
             std::vector<StorageInfo> arry;  // 获取所有的StorageInfo, 都存放在DataManager的table_中
             if(storage_data_->GetAll(&arry) == -1){
                 mylog::GetLogger(logger_name_)->Error("ListShow() fail when load storageinfo");
             }
+
             // 读取模板文件
             std::ifstream templateFile("../src/server/index.html");
             std::string templateContent(
@@ -279,13 +344,115 @@ namespace mystorage
         // 下载文件
         int Download(const http::HttpRequest& req, http::HttpResponse* resp){
             mylog::GetLogger(logger_name_)->Info("Download start");
+            
+            std::string file_name = base64_decode(req.getHeader("FileName"));
+            std::uint64_t file_size = std::stoull(req.getHeader("FileSize"));
+
+
+            std::string resource_path = UrlDecode(req.path()) + "/" + file_name;
+            mylog::GetLogger(logger_name_)->Info("resource path: " + resource_path);
+
             StorageInfo info;
+            
+            // 根据resource_path在tabel_中搜索对应的StorageInfo
+            storage_data_->GetOneByURL(resource_path, &info);
+            std::string download_path = info.storage_path_;
+
+            // 如果是深度存储，压缩过的，就得先解压，把它放到low_storage中
+            if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos){
+                mylog::GetLogger(logger_name_)->Info("uncompress: " + download_path);
+                FileUtil fu(download_path);
+                download_path = Config::GetInstance().GetLowStorageDir() + std::string(download_path.begin()
+                    + download_path.find_last_of('/') + 1, download_path.end()
+                );
+                FileUtil dirCreate(Config::GetInstance().GetLowStorageDir());
+                dirCreate.CreateDirectory();   // 之前可能用的都是深度存储，所以low_storage可能不存在
+                fu.UnCompress(download_path);  // 把fu指向文件的内容解压后写入dirCreate执行文件的内容  
+            }
+            FileUtil fu(download_path);
+            if(-1 == fu.Exists() && info.storage_path_.find("deep_storage") != std::string::npos){   
+                mylog::GetLogger(logger_name_)->Info("uncompress failed");
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+            }
+
+            // 打开文件
+            // int fd = open(download_path.c_str(), O_RDONLY);
+            // if(-1 == fd){
+            //     mylog::GetLogger(logger_name_)->Error("open file error: " + download_path + " -- " + strerror(errno));
+            //     resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+            // }
+
+            // 先发送状态行，响应头，空行
+            if(resp->getBody() == "chunk0"){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+                resp->addHeader("Accept-Ranges", "bytes");
+                resp->addHeader("ETag", GetETag(info).c_str());
+                resp->addHeader("Content-Type", "application/octet-stream");
+                resp->addHeader("Content-Length", std::to_string(file_size));
+                return 0;
+            }else if(resp->getBody() == "chunk1"){
+                // 因为响应头已经在上一个阶段发送出去了，接下来的发送不会再用到响应头的部分
+                // 因此我们可以在响应头存放一些字段来使用，比如pos
+                std::string posStr = resp->getHeader("pos");
+                std::int64_t pos = posStr.empty() ? 0 : std::stoull(posStr);
+
+                std::string content;
+                std::uint64_t chunk = (64 * 1024) <= (file_size - pos) ? (64 * 1024): (file_size - pos);
+                fu.GetPosLen(&content, pos, chunk);
+
+                resp->setBody(content);
+                resp->addHeader("pos", std::to_string(pos + chunk));
+                return 0;
+            }
+            std::string content;
+            if(-1 == fu.GetContent(&content)){
+                mylog::GetLogger(logger_name_)->Info("read failed");
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+            }
+            resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+            resp->addHeader("Accept-Ranges", "bytes");
+            resp->addHeader("ETag", GetETag(info).c_str());
+            resp->addHeader("Content-Type", "application/octet-stream");
+            resp->addHeader("Content-Length", std::to_string(file_size));
+            resp->setBody(content);
+
+            mylog::GetLogger(logger_name_)->Info("Download success");
+            mylog::GetLogger(logger_name_)->Info("Download end");
+
+            if(download_path != info.storage_path_){
+                remove(download_path.c_str());  // 删除文件
+            }
 
             return 0;
         }
 
         // 删除文件
         int Remove(const http::HttpRequest& req, http::HttpResponse* resp){
+            mylog::GetLogger(logger_name_)->Info("Remove start");
+
+            // 获取文件名
+            std::string filename = req.getHeader("FileName");
+            filename = base64_decode(filename);
+            mylog::GetLogger(logger_name_)->Info("The file: " + filename + " will be remove");
+
+            mystorage::StorageInfo info;
+            // 理论上在网页端点击，不可能删掉不存在的
+            if(storage_data_->GetOneByURL("/download/" + filename, &info) == -1){
+                mylog::GetLogger(logger_name_)->Warn("file is not exist");
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+                return -1;
+            }
+
+            // 删除文件
+            remove(info.storage_path_.c_str());
+            // 从table_中删除对应的storageinfo并更新
+            storage_data_->Erase(info.url_);
+            resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+            resp->addHeader("Content-Type", "application/json");
+            resp->setBody("{\"status\":\"success\",\"message\":\"File remove successfully\",\"filename\":\"" + filename + "\"}\n");
+
+            mylog::GetLogger(logger_name_)->Info("Remove success");
+
             return 0;
         }
 
@@ -315,9 +482,13 @@ namespace mystorage
         void initializeRouter(){
             httpServer_.Get("/", std::make_shared<GenHandler>(this));
             httpServer_.Post("/upload", std::make_shared<GenHandler>(this));
-            // httpServer_.Get("/download", std::make_shared<GenHandler>(this));
-            auto downloadhandler = std::make_shared<GenHandler>(this);
-            httpServer_.addRoute(http::HttpRequest::kGet, "/download/(.+)", downloadhandler);
+            
+            // 实际上可以把文件名放在请求头中，就不需要附在路径上了
+            // auto downloadhandler = std::make_shared<GenHandler>(this);
+            // httpServer_.addRoute(http::HttpRequest::kGet, "/download/(.+)", downloadhandler);
+            httpServer_.Get("/download", std::make_shared<GenHandler>(this));
+
+            httpServer_.Delete("/remove", std::make_shared<GenHandler>(this));
         }
 
         void initializeMiddleWare(){
