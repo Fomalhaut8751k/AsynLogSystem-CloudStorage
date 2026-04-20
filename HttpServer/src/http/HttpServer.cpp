@@ -1,9 +1,11 @@
 #include "../../include/http/HttpServer.h"
+// #include "../../include/utils/FileSender.h"
 
 #include <any>
 #include <functional>
 #include <memory>
 #include <thread>
+#include <fcntl.h>
 #include <boost/any.hpp>
 
 namespace http
@@ -93,6 +95,8 @@ void HttpServer::initialize()
     */
     server_.setConnectionCallback(std::bind(&HttpServer::onConnection, this, std::placeholders::_1));
     server_.setMessageCallback(std::bind(&HttpServer::onMessage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+    server_.setWriteCompleteCallback(std::bind(&HttpServer::writeCompleteCallback, this, std::placeholders::_1));
 }
 
 void HttpServer::setSslConfig(const ssl::SslConfig& config)
@@ -210,8 +214,7 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
             context->reset();
         }
     }
-    catch(const std::exception& e)
-    {   
+    catch(const std::exception& e){   
         // 捕获异常，返回错误信息
         LOG_ERROR("Exception in onMessage: %s", e.what());
         conn->send("HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -222,6 +225,59 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
     }
     
 }
+// outputBuffer_ 完全排空后触发，驱动大文件分块发送
+void HttpServer::writeCompleteCallback(const TcpConnectionPtr& conn){
+    // 取出 shared_ptr，立即拷贝到局部变量，之后 boost::any 怎么变都不影响 ctx 的生命周期
+    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableDownloadContext());
+    if(!sptrPtr || !*sptrPtr) return;
+    std::shared_ptr<DownloadContext> ctx = *sptrPtr;
+    if(ctx->file_size == 0) return;
+
+    // 所有分块已发完
+    if(ctx->pos >= ctx->file_size){
+        LOG_INFO("writeCompleteCallback: download complete, file: %s", ctx->file_path.c_str());
+        // [分块下载] 如果是深度存储解压出的临时文件，发完后删除
+        if(ctx->is_temp){
+            ::remove(ctx->file_path.c_str());
+            LOG_INFO("writeCompleteCallback: temp file removed: %s", ctx->file_path.c_str());
+        }
+        // 清空下载上下文，避免下一次请求误触发
+        // ctx 仍持有 shared_ptr，close_conn 访问安全
+        conn->setDownloadContext(boost::any{});
+        if(ctx->close_conn){
+            conn->shutdown();
+        }
+        return;
+    }
+
+    // 计算本次分块大小，最后一块可能不足 CHUNK_SIZE
+    uint64_t chunk_size = std::min(CHUNK_SIZE, ctx->file_size - ctx->pos);
+
+    // 从文件中读取本块数据
+    std::string chunk;
+    // [分块下载] 按偏移读取，避免一次性把整个大文件载入内存
+    int fd = ::open(ctx->file_path.c_str(), O_RDONLY);
+    if(fd < 0){
+        LOG_ERROR("writeCompleteCallback: open file failed: %s", ctx->file_path.c_str());
+        conn->shutdown();
+        return;
+    }
+    chunk.resize(chunk_size);
+    ssize_t n = ::pread(fd, &chunk[0], chunk_size, ctx->pos);
+    ::close(fd);
+    if(n <= 0){
+        LOG_ERROR("writeCompleteCallback: pread failed, pos=%lu", ctx->pos);
+        conn->shutdown();
+        return;
+    }
+    chunk.resize(n);
+
+    // 更新偏移后再 send，send 可能同步触发下一次 writeCompleteCallback
+    ctx->pos += n;
+    LOG_INFO("writeCompleteCallback: sending chunk, pos=%lu / %lu", ctx->pos, ctx->file_size);
+    conn->send(chunk);
+}
+
 
 void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
 {
@@ -233,40 +289,63 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
     // 对于下载的特殊处理
     if(req.method() == HttpRequest::kGet && req.path() == "/download"){
         std::uint64_t file_size = std::stoull(req.getHeader("FileSize"));
-        // 如果文件太大，就需要分多次来写入socket缓冲区
-        // if(file_size >= chunkDownloadSizeThreshold){
+        // [分块下载] 文件超过 1MB 时走分块路径，避免一次性把大文件载入内存再 send
         if(file_size >= 1024 * 1024){
-            // 先把空行，请求头，请求行封装了。
-            Buffer buf;
-            response.setBody("chunk0");
-            LOG_INFO("The file to be downloaded is too large and will be transmitted in chunks");
+            LOG_INFO("Large file download, size=%lu, will use chunked sending", file_size);
+
+            // 1. 先通过 httpCallback_ 让 Download() 完成解压、查元数据等准备工作，
+            //    并把 DownloadContext 写入 conn->downloadContext_
+            //    Download() 里检测到 resp->getBody() == "chunk_prepare" 时只做准备不发数据
+            response.setBody("chunk_prepare");
             httpCallback_(req, &response);
-            // response.showAll();
-            response.appendToBufferWithoutBody(&buf);
-            conn->send(&buf);  // 先发送状态行，响应头和空行
 
-            while(1){
-                response.setBody("chunk1");
-                httpCallback_(req, &response);
-                response.appendToBufferWithBody(&buf);
+            // 2. 从 response header 里取出 Download() 写好的文件路径和 is_temp 标记
+            std::string file_path = response.getHeader("X-File-Path");
+            bool is_temp = (response.getHeader("X-Is-Temp") == "1");
+
+            if(file_path.empty()){
+                // Download() 准备失败（文件不存在等），直接返回错误响应
+                Buffer buf;
+                response.appendToBuffer(&buf);
                 conn->send(&buf);
-                
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                return;
+            }
 
-                // 每次读取后，会更新已经读取的长度
-                uint64_t haveSendBit = std::stoull(response.getHeader("pos"));
-                LOG_INFO("Number of downloaded bytes / total number of bytes is %lu / %lu", haveSendBit, file_size);
-                if(haveSendBit >= file_size){
-                    break;
+            // 3. 初始化 DownloadContext 并存入连接（用 shared_ptr 管理生命周期）
+            auto ctxPtr = std::make_shared<DownloadContext>();
+            ctxPtr->file_path  = file_path;
+            ctxPtr->pos        = 0;
+            ctxPtr->file_size  = file_size;
+            ctxPtr->close_conn = close;
+            ctxPtr->is_temp    = is_temp;
+            conn->setDownloadContext(ctxPtr);
+
+            // 4. 发送响应头（不含 body）
+            response.setStatusLine(req.getVersion(), HttpResponse::k200Ok, "OK");
+            response.addHeader("Content-Length", std::to_string(file_size));
+            response.addHeader("Content-Type", "application/octet-stream");
+            Buffer buf;
+            response.appendToBufferWithoutBody(&buf);
+            conn->send(&buf);
+
+            // 5. 发送第一个 chunk，后续由 writeCompleteCallback 驱动
+            uint64_t first_chunk = std::min(CHUNK_SIZE, file_size);
+            std::string chunk;
+            chunk.resize(first_chunk);
+            int fd = ::open(file_path.c_str(), O_RDONLY);
+            if(fd >= 0){
+                ssize_t n = ::pread(fd, &chunk[0], first_chunk, 0);
+                ::close(fd);
+                if(n > 0){
+                    chunk.resize(n);
+                    // 更新 pos 后再 send
+                    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableDownloadContext());
+                    if(sptrPtr && *sptrPtr){
+                        (*sptrPtr)->pos = n;
+                    }
+                    conn->send(chunk);
                 }
-                
             }
-
-            response.setCloseConnection(close);
-            if(response.closeConnection()){
-                conn->shutdown();
-            }
-
             return;
         }
     }
@@ -291,9 +370,6 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
     }
 }
 
-std::uint64_t HttpServer::onRequestForDownload(const TcpConnectionPtr&, const HttpRequest&){
-
-}
 
 // 执行请求对应的路由处理函数
 void HttpServer::handleRequest(const HttpRequest& req, HttpResponse* resp)

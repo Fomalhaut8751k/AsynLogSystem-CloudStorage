@@ -982,3 +982,48 @@
 38. 2026.4.15
 
     在HttpServer的基础上，添加了网页端的删除功能。
+
+    明确一点，在调用 `conn->send(&buf)` 时，会尝试将 `buf` 中的数据写到对应的 `socket` 缓冲区当中，如果无法完全写入，会把剩下的数据都转移到 `TcpConnection` 里面的一个 `outputBuffer_`当中，`outputBuffer_` 中的数据不断堆积。因此每次调用完 `conn->send(&buf)` 时，这个buf就清空。因此内存的不断消耗是发送在 `outputBuufer_` 当中的而不是 `buf`。
+
+    第二种尝试，发现了`socket`缓冲区可写时，调用的`handleWrite()`中，当`outputBuffer`中的数据读完后就会关闭对`EPOLLOUT`监听，并且如果设置了`writeCompleteCallback_`就会执行。这个`writeCompleteCallback_`通过`TcpServer`提供，也就是我们可以在`HttpServer`中定义一个，并且他的参数带`TcpConnectionPtr`，因此有操作空间。
+
+    
+39. 2026.4.18
+
+    使用 `Claude Sonnet 4.6` 优化一下日志系统的性能：
+
+    主要贡献：Message.hpp 的两处改动，这是绝对的大头，贡献了绝大部分提升。
+
+    thread_local 时间戳缓存（最大贡献）
+
+    原来每次 format() 都调：
+    std::localtime(&now)  →  strftime(...)
+    localtime 内部要读取系统时区数据、做时区换算，strftime 再做格式化。在你的测试里，1秒内循环几十万次，但时间戳每秒只变一次——也就是说 99.999% 的 localtime + strftime
+    调用都是在重复计算同一个结果，全部白费。
+
+    改成 thread_local 缓存后，这两个调用每秒最多执行一次，其余全部命中缓存直接跳过。这一条单独就能贡献 2x 以上的提升。
+
+    ostringstream 换成 snprintf + 栈上 buffer（第二大贡献）
+
+    优化前
+    ```cpp
+    std::ostringstream oss;          // 构造：堆分配内部缓冲区
+    oss << "[" << time_buf << "] [" << level_str << "] " << unformatted_message;
+    return oss.str();                // 再拷贝一次到新 string
+    ```
+    每次 format() 都要构造一个 ostringstream，这意味着一次堆分配。在高频循环里，堆分配本身有 mutex（glibc malloc 内部锁），几十万次/秒的分配会在这里产生明显竞争。
+
+    优化后：
+    ```cpp
+    char buf[256];                   // 栈上，零分配
+    snprintf(buf, sizeof(buf), ...); // 直接写栈
+    result.reserve(n + msg.size());  // 一次分配，精确大小
+    result.append(buf, n);
+    result.append(unformatted_message);
+    ```
+  
+    堆分配从每次 format() 两次（ostringstream + oss.str()）降到一次（最终 result），且大小精确，不会触发 realloc。
+
+    每秒的日志输出量直接从 `56MB/s` 提升到了 `185.94 MB/s`
+
+

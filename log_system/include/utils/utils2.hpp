@@ -207,6 +207,9 @@ private:
     std::mutex MutexForPool;
 
     std::shared_ptr<LogNode> getConnection(){  // 获取节点
+        // [优化] 用 MutexForPool 单独保护节点池，与队列的 Mutex 分离，
+        // 避免 insert 路径上两把锁嵌套时 MutexForPool 成为瓶颈。
+        // retConnection 也使用同一把锁，保证 logNodePool_ 访问的线程安全。
         std::lock_guard<std::mutex> lock(MutexForPool);
         if(logNodePool_.empty()){
             return nullptr;
@@ -240,10 +243,12 @@ public:
     }
 
     std::uint32_t insertFromHead(const std::string& s, const int& slen = 0, unsigned int insert_threshold = 512 * 1024 * 1024){
+        // [优化] 将 logSize 的读写和链表操作都放在同一把锁内，
+        // 原来 logSize 的阈值检查和更新在锁外，存在数据竞争。
+        std::lock_guard<std::mutex> lock(Mutex);
         if(slen != -1 && s.length() + logSize > insert_threshold){  // 如果链表已经满了，就不再添加
-            return -1; 
+            return -1;
         }
-        // std::shared_ptr<LogNode> nnode = std::make_shared<LogNode>(s);
 
         std::shared_ptr<LogNode> nnode = getConnection();  // 如果节点池中有，就使用池中的节点，否则返回空
         if(!nnode){
@@ -252,15 +257,12 @@ public:
             nnode->str = s;  // 等号赋值
         }
 
-        {   std::lock_guard<std::mutex> lock(Mutex);
+        std::shared_ptr<LogNode> preNext = pre->next.lock();
 
-            std::shared_ptr<LogNode> preNext = pre->next.lock();
-            
-            pre->next = nnode;
-            nnode->prev = pre;
-            nnode->next = preNext;
-            preNext->prev = nnode;
-        }
+        pre->next = nnode;
+        nnode->prev = pre;
+        nnode->next = preNext;
+        preNext->prev = nnode;
 
         std::uint32_t logSizeCopy = 0;
         if(slen == -1){ // 给删除用

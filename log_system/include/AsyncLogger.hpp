@@ -86,22 +86,15 @@ public:
             flush_default_->flush(formatted_message);
             return;
         }
-        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::DEBUG);  // message.hpp
-        const int formatted_message_length = formatted_message.length();
+        // [优化] 先判断 level 再 format，level 不够直接返回，避免无效的格式化开销
+        if(level_ > mylog::LogLevel::DEBUG) return;
 
-        // 如果消息等级过低，就不写入缓冲区
-        if(level_ > mylog::LogLevel::DEBUG)
-        {
-            return;
-        }
+        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::DEBUG);
         char buf[256];
-        snprintf(buf, sizeof(buf), ", __FILE__: %s, __LINE__: %d", FILE, LINE);  // 添加相应的调试信息
-        std::string final_message = formatted_message + buf;
-
-        // 把最终信息写到worker_的buffer当中
-        // worker_->readFromUser(final_message, final_message.length());
-        worker_->LogQueueForward(final_message);
-        
+        snprintf(buf, sizeof(buf), ", __FILE__: %s, __LINE__: %d", FILE, LINE);
+        // [优化] append 原地追加，避免 operator+ 产生额外临时 string
+        formatted_message.append(buf);
+        worker_->LogQueueForward(std::move(formatted_message));
     }
 
     // 将消息处理为Info类型的日志并发送
@@ -126,18 +119,12 @@ public:
             flush_default_->flush(formatted_message);
             return;
         }
-        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::WARN);  // message.hpp
-        unsigned int formatted_message_length = formatted_message.length();
+        // [优化] 先判断 level 再 format，level 不够直接返回，避免无效的格式化开销
+        if(level_ > mylog::LogLevel::WARN) return;
 
-        // 如果消息等级过低，就不写入缓冲区
-        if(level_ > mylog::LogLevel::WARN)
-        {
-            return;
-        }
-
-        // 把信息写到worker_的buffer当中
-        // worker_->readFromUser(formatted_message, formatted_message_length);
-        worker_->LogQueueForward(formatted_message);
+        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::WARN);
+        // [优化] std::move 避免将左值传入 LogQueueForward 时多一次 string 拷贝
+        worker_->LogQueueForward(std::move(formatted_message));
     }
 
     // 将消息处理为Error类型的日志并发送
@@ -148,23 +135,18 @@ public:
             flush_default_->flush(formatted_message);
             return;
         }
-        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::ERROR);  // message.hpp
-        unsigned int formatted_message_length = formatted_message.length();
+        // [优化] 先判断 level 再 format，level 不够直接返回，避免无效的格式化开销
+        if(level_ > mylog::LogLevel::ERROR) return;
 
-        // 如果消息等级过低，就不写入缓冲区
-        if(level_ > mylog::LogLevel::ERROR)
-        {
-            return;
-        }
+        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::ERROR);
 
         if(threadpool_)
         {
             threadpool_->submitLog(formatted_message);
         }
 
-        // 把信息写到worker_的buffer当中
-        // worker_->readFromUser(formatted_message, formatted_message_length);
-        worker_->LogQueueForward(formatted_message);
+        // [优化] std::move 避免将左值传入 LogQueueForward 时多一次 string 拷贝
+        worker_->LogQueueForward(std::move(formatted_message));
     }
 
     // 将消息处理为Fatal类型的日志并发送
@@ -175,22 +157,17 @@ public:
             flush_default_->flush(formatted_message);
             return;
         }
-        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::FATAL);  // message.hpp
-        unsigned int formatted_message_length = formatted_message.length();
+        // [优化] 先判断 level 再 format，level 不够直接返回，避免无效的格式化开销
+        if(level_ > mylog::LogLevel::FATAL) return;
 
-        // 如果消息等级过低，就不写入缓冲区
-        if(level_ > mylog::LogLevel::FATAL)
-        {
-            return;
-        }
+        std::string formatted_message = formatter_->format(unformatted_message, mylog::LogLevel::FATAL);
 
         if(threadpool_)
         {
             threadpool_->submitLog(formatted_message);
         }
-        // 把信息写到worker_的buffer当中
-        // worker_->readFromUser(formatted_message, formatted_message_length);
-        worker_->LogQueueForward(formatted_message);
+        // [优化] std::move 避免将左值传入 LogQueueForward 时多一次 string 拷贝
+        worker_->LogQueueForward(std::move(formatted_message));
     }
 
     void WarnDefault(const std::string& unformatted_message)  // 警告信息

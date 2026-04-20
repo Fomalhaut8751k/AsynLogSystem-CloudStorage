@@ -344,70 +344,59 @@ namespace mystorage
         // 下载文件
         int Download(const http::HttpRequest& req, http::HttpResponse* resp){
             mylog::GetLogger(logger_name_)->Info("Download start");
-            
+
             std::string file_name = base64_decode(req.getHeader("FileName"));
             std::uint64_t file_size = std::stoull(req.getHeader("FileSize"));
-
 
             std::string resource_path = UrlDecode(req.path()) + "/" + file_name;
             mylog::GetLogger(logger_name_)->Info("resource path: " + resource_path);
 
             StorageInfo info;
-            
-            // 根据resource_path在tabel_中搜索对应的StorageInfo
             storage_data_->GetOneByURL(resource_path, &info);
             std::string download_path = info.storage_path_;
 
-            // 如果是深度存储，压缩过的，就得先解压，把它放到low_storage中
+            // 如果是深度存储，先解压到 low_storage
+            bool is_temp = false;
             if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos){
                 mylog::GetLogger(logger_name_)->Info("uncompress: " + download_path);
                 FileUtil fu(download_path);
-                download_path = Config::GetInstance().GetLowStorageDir() + std::string(download_path.begin()
-                    + download_path.find_last_of('/') + 1, download_path.end()
+                download_path = Config::GetInstance().GetLowStorageDir() + std::string(
+                    download_path.begin() + download_path.find_last_of('/') + 1,
+                    download_path.end()
                 );
                 FileUtil dirCreate(Config::GetInstance().GetLowStorageDir());
-                dirCreate.CreateDirectory();   // 之前可能用的都是深度存储，所以low_storage可能不存在
-                fu.UnCompress(download_path);  // 把fu指向文件的内容解压后写入dirCreate执行文件的内容  
+                dirCreate.CreateDirectory();
+                fu.UnCompress(download_path);
+                // [分块下载] 标记为临时文件，由 writeCompleteCallback 在发完后删除，
+                // 避免原来在 Download() 末尾立即删导致分块发送时文件已不存在
+                is_temp = true;
             }
+
             FileUtil fu(download_path);
-            if(-1 == fu.Exists() && info.storage_path_.find("deep_storage") != std::string::npos){   
-                mylog::GetLogger(logger_name_)->Info("uncompress failed");
+            if(-1 == fu.Exists() && info.storage_path_.find("deep_storage") != std::string::npos){
+                mylog::GetLogger(logger_name_)->Error("uncompress failed: " + download_path);
                 resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+                return -1;
             }
 
-            // 打开文件
-            // int fd = open(download_path.c_str(), O_RDONLY);
-            // if(-1 == fd){
-            //     mylog::GetLogger(logger_name_)->Error("open file error: " + download_path + " -- " + strerror(errno));
-            //     resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
-            // }
-
-            // 先发送状态行，响应头，空行
-            if(resp->getBody() == "chunk0"){
+            // [分块下载] chunk_prepare 模式：onRequest 大文件路径调用，
+            // 只做解压/查元数据准备，把文件路径和 is_temp 标记写入响应头，不发数据
+            if(resp->getBody() == "chunk_prepare"){
                 resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
                 resp->addHeader("Accept-Ranges", "bytes");
                 resp->addHeader("ETag", GetETag(info).c_str());
-                resp->addHeader("Content-Type", "application/octet-stream");
-                resp->addHeader("Content-Length", std::to_string(file_size));
-                return 0;
-            }else if(resp->getBody() == "chunk1"){
-                // 因为响应头已经在上一个阶段发送出去了，接下来的发送不会再用到响应头的部分
-                // 因此我们可以在响应头存放一些字段来使用，比如pos
-                std::string posStr = resp->getHeader("pos");
-                std::int64_t pos = posStr.empty() ? 0 : std::stoull(posStr);
-
-                std::string content;
-                std::uint64_t chunk = (64 * 1024) <= (file_size - pos) ? (64 * 1024): (file_size - pos);
-                fu.GetPosLen(&content, pos, chunk);
-
-                resp->setBody(content);
-                resp->addHeader("pos", std::to_string(pos + chunk));
+                resp->addHeader("X-File-Path", download_path);
+                resp->addHeader("X-Is-Temp", is_temp ? "1" : "0");
+                mylog::GetLogger(logger_name_)->Info("Download chunk_prepare done: " + download_path);
                 return 0;
             }
+
+            // 小文件路径：一次性读取并发送
             std::string content;
             if(-1 == fu.GetContent(&content)){
-                mylog::GetLogger(logger_name_)->Info("read failed");
+                mylog::GetLogger(logger_name_)->Error("read failed: " + download_path);
                 resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+                return -1;
             }
             resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
             resp->addHeader("Accept-Ranges", "bytes");
@@ -417,10 +406,10 @@ namespace mystorage
             resp->setBody(content);
 
             mylog::GetLogger(logger_name_)->Info("Download success");
-            mylog::GetLogger(logger_name_)->Info("Download end");
 
-            if(download_path != info.storage_path_){
-                remove(download_path.c_str());  // 删除文件
+            // 小文件：发完后立即删除临时文件
+            if(is_temp){
+                ::remove(download_path.c_str());
             }
 
             return 0;

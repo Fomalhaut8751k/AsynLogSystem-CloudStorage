@@ -35,6 +35,15 @@ class HttpResponse;
 namespace http
 {
 
+// 大文件分块下载的连接状态，存储在 TcpConnection::downloadContext_ 中
+struct DownloadContext {
+    std::string file_path;   // 实际读取的文件路径
+    uint64_t    pos;         // 下一次读取的起始偏移
+    uint64_t    file_size;   // 文件总大小
+    bool        close_conn;  // 发完后是否关闭连接
+    bool        is_temp;     // 是否是解压出的临时文件，发完后需要删除
+};
+
 class HttpServer: noncopyable
 {
 public:
@@ -73,7 +82,7 @@ public:
 
     // 添加中间件的方法
     void addMiddleware(std::shared_ptr<middleware::Middleware> middleware) { middlewareChain_.addMiddleware(middleware); }
-    
+
     void enableSSL(bool enable) { useSSL_ = enable; }
 
     void setSslConfig(const ssl::SslConfig& config);
@@ -88,8 +97,10 @@ private:
     std::uint64_t onRequestForDownload(const TcpConnectionPtr&, const HttpRequest&);
     void handleRequest(const HttpRequest& req, HttpResponse* resp);
 
+    void writeCompleteCallback(const TcpConnectionPtr&);
+
     InetAddress listenAddr_;  // 监听地址
-    TcpServer server_;  
+    TcpServer server_;
     EventLoop mainLoop_;  // 主循环
     HttpCallback httpCallback_;  // 回调函数
     router::Router router_;  // 路由
@@ -98,10 +109,9 @@ private:
     std::unique_ptr<ssl::SslContext> sslCtx_;  // SSL上下文
     bool useSSL_;  // 是否使用SSL
     std::map<TcpConnectionPtr, std::unique_ptr<ssl::SslConnection>> sslConns_;
-    /*
-        SslConnection里面就有TcpConnectionPtr conn_;     
-    */
-   std::uint64_t chunkDownloadSizeThreshold;
+    std::uint64_t chunkDownloadSizeThreshold;
+
+    static constexpr uint64_t CHUNK_SIZE = 64 * 1024;  // 每次分块发送 64KB
 };
 
 
