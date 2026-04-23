@@ -1,5 +1,4 @@
 #include "../../include/http/HttpServer.h"
-// #include "../../include/utils/FileSender.h"
 
 #include <any>
 #include <functional>
@@ -211,7 +210,14 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
         // 如果buf缓冲区中解析出一个完成的数据包才封装响应报文
         if(context->gotAll()){
             onRequest(conn, context->request());
-            context->reset();
+            // 检查 conn->getContext() 是否被 DownloadContext 占用
+            // 如果是大文件下载，context_ 已经被替换，不应该 reset HttpContext
+            auto* downloadCtx = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableContext());
+            if(!downloadCtx || !*downloadCtx){
+                // 不是大文件下载场景，正常 reset
+                context->reset();
+            }
+            // 如果是大文件下载，不 reset，让 HttpContext 保持原样
         }
     }
     catch(const std::exception& e){   
@@ -228,7 +234,7 @@ void HttpServer::onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp 
 // outputBuffer_ 完全排空后触发，驱动大文件分块发送
 void HttpServer::writeCompleteCallback(const TcpConnectionPtr& conn){
     // 取出 shared_ptr，立即拷贝到局部变量，之后 boost::any 怎么变都不影响 ctx 的生命周期
-    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableDownloadContext());
+    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableContext());
     if(!sptrPtr || !*sptrPtr) return;
     std::shared_ptr<DownloadContext> ctx = *sptrPtr;
     if(ctx->file_size == 0) return;
@@ -243,7 +249,7 @@ void HttpServer::writeCompleteCallback(const TcpConnectionPtr& conn){
         }
         // 清空下载上下文，避免下一次请求误触发
         // ctx 仍持有 shared_ptr，close_conn 访问安全
-        conn->setDownloadContext(boost::any{});
+        conn->setContext(boost::any{});
         if(ctx->close_conn){
             conn->shutdown();
         }
@@ -318,7 +324,7 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
             ctxPtr->file_size  = file_size;
             ctxPtr->close_conn = close;
             ctxPtr->is_temp    = is_temp;
-            conn->setDownloadContext(ctxPtr);
+            conn->setContext(ctxPtr);
 
             // 4. 发送响应头（不含 body）
             response.setStatusLine(req.getVersion(), HttpResponse::k200Ok, "OK");
@@ -339,7 +345,7 @@ void HttpServer::onRequest(const TcpConnectionPtr& conn, const HttpRequest& req)
                 if(n > 0){
                     chunk.resize(n);
                     // 更新 pos 后再 send
-                    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableDownloadContext());
+                    auto* sptrPtr = boost::any_cast<std::shared_ptr<DownloadContext>>(conn->getMutableContext());
                     if(sptrPtr && *sptrPtr){
                         (*sptrPtr)->pos = n;
                     }

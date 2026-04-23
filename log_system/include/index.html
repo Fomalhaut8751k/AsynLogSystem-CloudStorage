@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大日志上传测试工具 - 真流式版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .success-note {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            color: #155724;
+        }
+        .config-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        label {
+            font-weight: 600;
+            color: #495057;
+            min-width: 120px;
+        }
+        input[type="number"], select {
+            padding: 10px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 200px;
+        }
+        .info-text {
+            color: #666;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .log-area {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 2px 5px;
+            border-left: 3px solid;
+        }
+        .log-info { border-left-color: #4caf50; color: #4caf50; }
+        .log-error { border-left-color: #f44336; color: #f44336; }
+        .log-success { border-left-color: #2196f3; color: #2196f3; }
+        .log-progress { border-left-color: #ff9800; color: #ff9800; }
+        .log-warning { border-left-color: #ffc107; color: #ffc107; }
+        .server-info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196f3;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .chunk-info {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #495057;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📤 大日志上传测试工具 - 真流式内存安全版</h1>
+            <div class="subtitle">使用 ReadableStream + fetch streaming，真正零内存增长</div>
+            
+            <div class="success-note">
+                <strong>✅ 真正流式上传：</strong><br>
+                • 使用 ReadableStream 生成数据，每次只生成一小块<br>
+                • 使用 fetch + body 流式上传，不缓存整个请求体<br>
+                • 内存占用固定 ~1-2MB，可上传任意大小文件（4GB、100GB、1TB）<br>
+                • 不会出现 "Array buffer allocation failed" 错误
+            </div>
+            
+            <div class="server-info">
+                🔗 后端服务器地址: <strong id="serverUrlDisplay">http://172.30.173.24:8080/upload</strong>
+            </div>
+            
+            <div class="config-panel">
+                <div class="form-group">
+                    <label>日志大小:</label>
+                    <input type="number" id="logSize" value="4" step="any">
+                    <select id="sizeUnit">
+                        <option value="B">字节 (B)</option>
+                        <option value="KB">KB</option>
+                        <option value="MB">MB</option>
+                        <option value="GB" selected>GB</option>
+                        <option value="TB">TB</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>每块大小 (KB):</label>
+                    <input type="number" id="chunkSize" value="64" min="1" max="1024">
+                    <span class="info-text">(每次生成的数据块大小，建议 64KB-256KB)</span>
+                </div>
+                <div class="form-group">
+                    <label>内存占用:</label>
+                    <span id="memoryEstimate" style="color: #28a745; font-weight: bold;">~0.06 MB</span>
+                    <span class="info-text">(固定，不随文件大小增长)</span>
+                </div>
+                <div class="chunk-info" id="chunkInfo">
+                    💡 将使用真流式上传，内存占用固定
+                </div>
+                <button onclick="startUpload()" id="uploadBtn">🚀 开始流式上传</button>
+                <button onclick="stopUpload()" id="stopBtn" disabled>⏹️ 停止</button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalBytes">0</div>
+                    <div class="stat-label">已上传总量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="speed">0</div>
+                    <div class="stat-label">上传速度 (MB/s)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="elapsedTime">0</div>
+                    <div class="stat-label">耗时 (秒)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="memoryUsage">0</div>
+                    <div class="stat-label">预估内存 (MB)</div>
+                </div>
+            </div>
+            
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+            </div>
+            
+            <div class="log-area" id="logArea">
+                <div class="log-entry log-success">✅ 真流式版本 - 可上传任意大小文件</div>
+                <div class="log-entry log-info">💡 使用 ReadableStream 流式生成和上传</div>
+                <div class="log-entry log-info">💡 内存占用固定 ~1-2MB，不会因文件大小而增长</div>
+                <div class="log-entry log-info">💡 支持 4GB、10GB、100GB 甚至更大</div>
+                <div class="log-entry log-info">📡 后端地址: http://172.30.173.24:8080/upload</div>
+                <div class="log-entry log-warning">⚠️ 注意：超大日志可能导致服务器崩溃！</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 固定后端服务器地址
+        const SERVER_URL = "http://172.30.173.24:8080/upload";
+        
+        let isUploading = false;
+        let startTime = 0;
+        let totalUploaded = 0;
+        let speedInterval = null;
+        let totalSize = 0;
+        let abortController = null;
+        
+        // 显示服务器地址
+        document.getElementById('serverUrlDisplay').textContent = SERVER_URL;
+        
+        function addLog(message, type = 'info') {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${time}] ${message}`;
+            logArea.appendChild(logEntry);
+            logEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            if (!isFinite(bytes)) return '∞';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function parseSize(sizeValue, unit) {
+            const multipliers = {
+                'B': 1,
+                'KB': 1024,
+                'MB': 1024 * 1024,
+                'GB': 1024 * 1024 * 1024,
+                'TB': 1024 * 1024 * 1024 * 1024
+            };
+            return sizeValue * multipliers[unit];
+        }
+        
+        function updateStats() {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const speed = elapsed > 0 ? (totalUploaded / elapsed / (1024 * 1024)) : 0;
+            
+            document.getElementById('totalBytes').textContent = formatBytes(totalUploaded);
+            document.getElementById('speed').textContent = speed.toFixed(2);
+            document.getElementById('elapsedTime').textContent = elapsed.toFixed(1);
+            
+            if (totalSize > 0) {
+                const percent = (totalUploaded / totalSize) * 100;
+                document.getElementById('progressFill').style.width = percent + '%';
+                document.getElementById('progressFill').textContent = percent.toFixed(1) + '%';
+            }
+        }
+        
+        // 创建流式数据生成器
+        function createStreamGenerator(totalBytes, chunkSize) {
+            let uploaded = 0;
+            let chunkIndex = 0;
+            
+            return new ReadableStream({
+                async pull(controller) {
+                    if (!isUploading) {
+                        controller.close();
+                        return;
+                    }
+                    
+                    if (uploaded >= totalBytes) {
+                        controller.close();
+                        return;
+                    }
+                    
+                    // 计算当前块大小
+                    const remaining = totalBytes - uploaded;
+                    const currentChunkSize = Math.min(chunkSize, remaining);
+                    
+                    // 生成当前块的数据
+                    const timestamp = Date.now();
+                    const header = `[LOG] Time: ${timestamp} | Chunk: ${chunkIndex} | Progress: ${formatBytes(uploaded)}/${formatBytes(totalBytes)} | Data: `;
+                    
+                    const encoder = new TextEncoder();
+                    const headerBytes = encoder.encode(header);
+                    const headerLength = headerBytes.length;
+                    
+                    let dataBuffer;
+                    if (currentChunkSize <= headerLength) {
+                        dataBuffer = headerBytes.slice(0, currentChunkSize);
+                    } else {
+                        dataBuffer = new Uint8Array(currentChunkSize);
+                        dataBuffer.set(headerBytes, 0);
+                        // 填充 'X' (ASCII 88)
+                        dataBuffer.fill(88, headerLength, currentChunkSize);
+                    }
+                    
+                    // 推送数据块
+                    controller.enqueue(dataBuffer);
+                    
+                    uploaded += currentChunkSize;
+                    totalUploaded = uploaded;
+                    chunkIndex++;
+                    
+                    // 更新进度
+                    updateStats();
+                    
+                    // 每 10MB 输出一次日志
+                    if (uploaded % (10 * 1024 * 1024) < currentChunkSize) {
+                        addLog(`已上传 ${formatBytes(uploaded)}/${formatBytes(totalSize)} (${((uploaded/totalSize)*100).toFixed(1)}%)`, 'progress');
+                    }
+                }
+            });
+        }
+        
+        async function startUpload() {
+            if (isUploading) return;
+            
+            let sizeValue = parseFloat(document.getElementById('logSize').value);
+            const unit = document.getElementById('sizeUnit').value;
+            const chunkSizeKB = parseInt(document.getElementById('chunkSize').value);
+            
+            if (isNaN(sizeValue) || sizeValue <= 0) {
+                addLog(`❌ 请输入有效的日志大小`, 'error');
+                return;
+            }
+            
+            totalSize = parseSize(sizeValue, unit);
+            const chunkSizeBytes = chunkSizeKB * 1024;
+            const totalChunks = Math.ceil(totalSize / chunkSizeBytes);
+            
+            addLog(`🎯 开始真流式上传测试`, 'info');
+            addLog(`📊 配置: ${sizeValue}${unit} (${formatBytes(totalSize)}), 每块: ${formatBytes(chunkSizeBytes)}, 总块数: ${totalChunks.toLocaleString()}`, 'info');
+            addLog(`💾 内存占用: 固定 ~${(chunkSizeBytes / (1024 * 1024)).toFixed(1)} MB`, 'info');
+            addLog(`📡 上传目标: ${SERVER_URL}`, 'info');
+            
+            if (totalSize > 100 * 1024 * 1024 * 1024) { // 100GB
+                addLog(`⚠️ 警告: 上传大小超过100GB，可能耗时很长`, 'warning');
+                if (!confirm(`上传 ${formatBytes(totalSize)} 数据，可能耗时数小时，确定继续？`)) {
+                    return;
+                }
+            }
+            
+            isUploading = true;
+            startTime = Date.now();
+            totalUploaded = 0;
+            
+            document.getElementById('uploadBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('progressContainer').style.display = 'block';
+            
+            // 创建 AbortController 用于取消请求
+            abortController = new AbortController();
+            
+            // 启动速度监控
+            speedInterval = setInterval(updateStats, 1000);
+            
+            try {
+                // 创建流式生成器
+                const stream = createStreamGenerator(totalSize, chunkSizeBytes);
+                
+                // 使用 fetch 发送流式请求
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'X-Total-Size': totalSize.toString(),
+                        'X-Streaming': 'true'
+                    },
+                    body: stream,
+                    signal: abortController.signal
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                const elapsed = (Date.now() - startTime) / 1000;
+                const avgSpeed = (totalUploaded / elapsed / (1024 * 1024)).toFixed(2);
+                
+                addLog(`✅ 上传完成！总大小: ${formatBytes(totalUploaded)}, 耗时: ${elapsed.toFixed(2)}秒, 平均速度: ${avgSpeed} MB/s`, 'success');
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addLog(`⏹️ 上传已取消`, 'warning');
+                } else {
+                    addLog(`❌ 上传失败: ${error.message}`, 'error');
+                }
+            } finally {
+                isUploading = false;
+                clearInterval(speedInterval);
+                abortController = null;
+                document.getElementById('uploadBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+            }
+        }
+        
+        function stopUpload() {
+            if (abortController) {
+                abortController.abort();
+                addLog(`⏹️ 正在停止上传...`, 'warning');
+            }
+            isUploading = false;
+        }
+        
+        // 实时更新信息
+        function updateChunkInfo() {
+            const sizeValue = parseFloat(document.getElementById('logSize').value);
+            const unit = document.getElementById('sizeUnit').value;
+            const chunkSizeKB = parseInt(document.getElementById('chunkSize').value);
+            
+            if (!isNaN(sizeValue) && !isNaN(chunkSizeKB)) {
+                const totalBytes = parseSize(sizeValue, unit);
+                const chunkSizeBytes = chunkSizeKB * 1024;
+                const totalChunks = Math.ceil(totalBytes / chunkSizeBytes);
+                const memoryMB = (chunkSizeBytes / (1024 * 1024)).toFixed(1);
+                
+                document.getElementById('memoryEstimate').textContent = `~${memoryMB} MB`;
+                document.getElementById('memoryUsage').textContent = memoryMB;
+                
+                const chunkInfo = document.getElementById('chunkInfo');
+                chunkInfo.innerHTML = `
+                    💡 流式上传配置:<br>
+                    • 总块数: ${totalChunks.toLocaleString()} 块<br>
+                    • 每块大小: ${formatBytes(chunkSizeBytes)}<br>
+                    • 内存占用: 固定 ~${memoryMB} MB<br>
+                    • 可以安全上传任意大小文件（4GB、100GB、1TB）<br>
+                    • 使用 ReadableStream API，真正的零拷贝流式上传
+                `;
+            }
+        }
+        
+        // 监听变化
+        document.getElementById('logSize').addEventListener('input', updateChunkInfo);
+        document.getElementById('sizeUnit').addEventListener('change', updateChunkInfo);
+        document.getElementById('chunkSize').addEventListener('input', updateChunkInfo);
+        
+        // 初始化
+        updateChunkInfo();
+    </script>
+</body>
+</html>
