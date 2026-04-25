@@ -296,7 +296,8 @@
         // 格式化文件大小
         function formatSize(bytes) {
             if (bytes === 0 || !bytes || isNaN(bytes)) return '0 B';
-            const k = 1024;
+            // const k = 1024;
+            const k = 1000;
             const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
@@ -402,48 +403,19 @@
                 
                 // 显示下载进度提示
                 showDownloadProgress(fileName);
-                
-                const response = await fetch(`${config.backendUrl}/download`, {
-                    method: 'GET',
-                    headers: {
-                        'FileName': encodedFileName,
-                        'FileSize': sizeStr
-                    }
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`下载失败 (${response.status}): ${errorText}`);
-                }
-                
-                // 获取文件 blob
-                const blob = await response.blob();
-                
-                // 验证下载的文件大小是否匹配（仅当有有效大小时）
-                const expectedSize = parseInt(sizeStr, 10);
-                if (!isNaN(expectedSize) && expectedSize > 0 && blob.size !== expectedSize) {
-                    console.warn(`文件大小不匹配: 期望 ${expectedSize}, 实际 ${blob.size}`);
-                    // 只显示 Toast 提示，不弹确认框，直接继续下载
-                    showToast(`文件大小不匹配，已继续保存\n期望: ${formatSize(expectedSize)}\n实际: ${formatSize(blob.size)}`, 'warning');
-                }
-                
-                // 创建下载链接（无论大小是否匹配都继续）
-                const url = URL.createObjectURL(blob);
+
+                // 大文件不要使用 fetch().blob()，否则浏览器会先把完整文件放入内存，容易导致压缩包内容异常。
+                const url = `${config.backendUrl}/download?filename=${encodeURIComponent(encodedFileName)}&filesize=${encodeURIComponent(sizeStr)}`;
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = fileName;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                
-                // 清理 URL 对象
-                setTimeout(() => {
-                    URL.revokeObjectURL(url);
-                }, 100);
-                
-                hideDownloadProgress();
+
+                setTimeout(() => hideDownloadProgress(), 1000);
                 console.log(`文件下载完成: ${fileName}`);
-                showToast(`文件 "${fileName}" 下载完成`, 'info');
+                showToast(`文件 "${fileName}" 已开始下载`, 'info');
                 
             } catch (error) {
                 console.error('下载错误:', error);

@@ -37,7 +37,8 @@ target_include_directories(Service
 target_link_libraries(Service
     PRIVATE
         # 你自己的库
-        HttpServer
+        # HttpServer
+        HttpServer_v2
         log_system
         
         # mymuduo 网络库

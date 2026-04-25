@@ -1,11 +1,16 @@
 #ifndef STORAGESERVER_H
 #define STORAGESERVER_H
 
-#include "../../HttpServer/include/http/HttpRequest.h"
-#include "../../HttpServer/include/http/HttpResponse.h"
-#include "../../HttpServer/include/http/HttpServer.h"
+// #include "../../HttpServer/include/http/HttpRequest.h"
+// #include "../../HttpServer/include/http/HttpResponse.h"
+// #include "../../HttpServer/include/http/HttpServer.h"
+#include "../../HttpServer_v2/include/http/HttpRequest.h"
+#include "../../HttpServer_v2/include/http/HttpResponse.h"
+#include "../../HttpServer_v2/include/http/HttpServer.h"
 
-#include "../../HttpServer/include/router/RouterHandler.h"
+// #include "../../HttpServer/include/router/RouterHandler.h"
+#include "../../HttpServer_v2/include/router/RouterHandler.h"
+#include "../../HttpServer_v2/include/middleware/cors/CorsMiddleware.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -20,7 +25,9 @@
 extern mystorage::DataManager* storage_data_;
 extern std::string logger_name_;
 
-using namespace http;
+// using namespace http;
+namespace http = http_v2;
+using namespace http_v2;
 
 namespace mystorage
 {
@@ -43,9 +50,11 @@ namespace mystorage
             int uint_index = 0;
             double size = bytes;
 
-            while(size >= 1024 && uint_index < 3)  // 最大单位为GB
+            // while(size >= 1024 && uint_index < 3)  // 最大单位为GB
+            while(size >= 1000 && uint_index < 3)  // 使用网页/磁盘常见的十进制单位
             {
-                size /= 1024;
+                // size /= 1024;
+                size /= 1000;
                 uint_index++;
             }
 
@@ -154,7 +163,9 @@ namespace mystorage
             etag << "-";
             etag << std::to_string(fu.FileSize());
             etag << "-";
-            etag << TimetoStr(fu.LastModifyTime());
+            // etag << TimetoStr(fu.LastModifyTime());
+            // ctime() 会带尾部换行，写入 HTTP 头会破坏响应头边界，导致浏览器把后续头当成文件内容。
+            etag << std::to_string(fu.LastModifyTime());
             return etag.str();
         } 
 
@@ -188,9 +199,12 @@ namespace mystorage
         };
     
     public:
-        CloudStorageServer(int port, const std::string& name, 
-                    TcpServer::Option option = TcpServer::kNoReusePort):
-            httpServer_(port, name, true, option){
+        // CloudStorageServer(int port, const std::string& name,
+        //             TcpServer::Option option = TcpServer::kNoReusePort):
+        //     httpServer_(port, name, true, option){
+        CloudStorageServer(int port, const std::string& name,
+                    http::HttpServer::Option option = http::HttpServer::kNoReusePort):
+            httpServer_(port, name, false, option){
             initialize();
         }
 
@@ -345,8 +359,17 @@ namespace mystorage
         int Download(const http::HttpRequest& req, http::HttpResponse* resp){
             mylog::GetLogger(logger_name_)->Info("Download start");
 
-            std::string file_name = base64_decode(req.getHeader("FileName"));
-            std::uint64_t file_size = std::stoull(req.getHeader("FileSize"));
+            std::string encoded_file_name = req.getHeader("FileName");
+            if(encoded_file_name.empty()){
+                encoded_file_name = UrlDecode(req.getQueryParameters("filename"));
+            }
+            std::string file_name = base64_decode(encoded_file_name);
+
+            std::string file_size_str = req.getHeader("FileSize");
+            if(file_size_str.empty()){
+                file_size_str = req.getQueryParameters("filesize");
+            }
+            std::uint64_t file_size = file_size_str.empty() ? 0 : std::stoull(file_size_str);
 
             std::string resource_path = UrlDecode(req.path()) + "/" + file_name;
             mylog::GetLogger(logger_name_)->Info("resource path: " + resource_path);
@@ -387,6 +410,7 @@ namespace mystorage
                 resp->addHeader("ETag", GetETag(info).c_str());
                 resp->addHeader("X-File-Path", download_path);
                 resp->addHeader("X-Is-Temp", is_temp ? "1" : "0");
+                resp->addHeader("Content-Disposition", "attachment; filename=\"" + file_name + "\"");
                 mylog::GetLogger(logger_name_)->Info("Download chunk_prepare done: " + download_path);
                 return 0;
             }
@@ -403,6 +427,7 @@ namespace mystorage
             resp->addHeader("ETag", GetETag(info).c_str());
             resp->addHeader("Content-Type", "application/octet-stream");
             resp->addHeader("Content-Length", std::to_string(file_size));
+            resp->addHeader("Content-Disposition", "attachment; filename=\"" + file_name + "\"");
             resp->setBody(content);
 
             mylog::GetLogger(logger_name_)->Info("Download success");
@@ -488,7 +513,8 @@ namespace mystorage
         }
 
         void initializeSSLTLS(){
-            httpServer_.setSslConfig(ssl::SslConfig());
+            // httpServer_.setSslConfig(ssl::SslConfig());
+            httpServer_.setSslConfig(http::ssl::SslConfig());
         }
 
         void setSessionManager(std::unique_ptr<http::session::SessionManager> manager){

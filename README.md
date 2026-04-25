@@ -5,7 +5,7 @@
 1. 2025.9.13
     
     实现了异步日志系统的主要功能:
-    ![](img/asynclogger.png)
+    ![](imgs/asynclogger.png)
 
     include(with libevent)提供了基于libevent的部分功能测试，可以在终端`nc 127.0.0.1 8000`向服务器发送消息作为日志信息发送到控制台和日志中。
 
@@ -29,18 +29,18 @@
 
     通过调整各个类的调用逻辑解决。
 
-    ![](img/version3.drawio.png)
+    ![](imgs/version3.drawio.png)
 
 - 问题2
 
     一个发生在buffer交换的非致命问题：
 
     一开始生产者在等待数据，消费者在等待生产者给数据（交换buffer）（label_consumer_ready_ = true），之后生产者的buffer有了数据（label_data_ready_ = true），它被唤醒，交换buffer并通知消费者（label_data_ready_），而后释放互斥锁，此时生产者和消费将抢夺同一个锁：**如果生产者抢到了这把锁**，在生产者进入`wait`之前，又有数据到了（label_data_ready_ = true），这时候再`wait`就不会进入等待，而是交换buffer，但是，消费者中的buffer还没有被处理掉......
-    ![](img/buffer_swap.png)
+    ![](imgs/buffer_swap.png)
 
     因此让生产者交换完缓冲区后，把`label_consumer_ready_`置为`false`，表示消费者的buffer中已经有数据了。这样生产者抢到锁后，即使有数据发来，也会把锁释放掉让消费者先处理buffer中的数据。
 
-    ![](img/buffer_swap_2.png)
+    ![](imgs/buffer_swap_2.png)
 
 
 - 问题3
@@ -57,7 +57,7 @@
     不过生产者进入wait,发现Exitlabel_已经为true，依然能正常退出，通知析构函数，当然此时析构函数只检测到了生产者退出的标志是true，因此继续等待。
     消费者进入wait，因为消费者唯二被唤醒的情况是生产者通知或者AsyncWorker析构时通知，因为生产者线程已经结束了，所以消费者在wait中永远出不来，进而AsyncWorker的析构也卡住了。
     
-    ![](img/deadlock.png)
+    ![](imgs/deadlock.png)
 
     最初的消费者的唤醒条件比较单一：
     ```cpp
@@ -67,7 +67,7 @@
     ```cpp
     cond_consumer_.wait(lock, [&]()->bool { return !label_consumer_ready_ || ExitLabel_;});
     ```
-    ![](img/buffer_swap_3.png)
+    ![](imgs/buffer_swap_3.png)
 
 <br>
 
@@ -83,7 +83,7 @@
     一个连接服务器后事件循环无法正常启动的问题
 
     通过gdb调试发现，有时候有些进程无法正常启动事件循环，刚启动后就发现`event_base_dispatch(base);`下面的断点被触发了。
-    ![](img/ignore.png)
+    ![](imgs/ignore.png)
 
     通过gdb打印`event_base_dispatch(base);`的返回值发现，异常退出事件循环的，它们返回值为1，而正常退出的几个返回值都是0，通过查阅`libevent`的源码，找到退出循环的语句，从判断语句的其中两个条件来看，`!event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)`应该分别表示：是否有事件，以及激活状态的事件的数量。
     ```cpp
@@ -106,13 +106,13 @@
     ```
     
     通过gdb进入`event_base_dispatch(base)`函数内部，事件循环正常启动的情况下，应该是如下情况：蓝色划线的分别代表事件循环直接退出的三个需要成立条件：其中`flags`默认为0，`EVLOOP_NO_EXIT_ON_EMPTY`为0x04，&后的结果为0，因此第一个条件满足；第二个条件获取注册的事件情况，返回1表示有注册的事件，正常情况下返回1，故第二个条件为0，到此已经可以判断条件不会成立；第三个条件式激活状态的事件情况，结果是0，故第三个条件为满足。
-    ![](img/event_loop.png)
+    ![](imgs/event_loop.png)
     
     我们用gdb将断点打在事件循环直接退出的条件满足后执行的语句上，结果发现，此时的事件循环中没有任何事件！因此事件循环退出的三个条件都满足了，于是`event_base_dispatch(base)`直接就出来了。
-    ![](img/event_loop_2.png)
+    ![](imgs/event_loop_2.png)
     
     进一步调试，我们打印刚进入`event_base_dispatch(base)`时事件循环有无事件，发现是有的`event_haveevents(base) = 1`(`event_callback`和`read_callback`两个事件，只打印`base->event_count`是2)，但等到事件循环退出的条件判断时，却显示没有任何事件。
-    ![](img/event_loop_3.png)
+    ![](imgs/event_loop_3.png)
 
     另外我们发现，在进入事件循环即执行`event_base_dispatch(base)`之前使线程休眠0.1s，便可解决上述问题。
     ```cpp
@@ -130,12 +130,12 @@
 - 问题5
 
     新的问题（可能和22号的问题有联系），当启动的线程较多比如8个时，发生以下问题的概率就更高：
-    ![](img/process.png)
+    ![](imgs/process.png)
     图中我们可以看到，参数`base`和`returnEventLoopExit()`已不可访问。说明`Client`对象此时已经析构了，
     它的这两个成员变量无法再访问。
 
     在`Client`的启动函数`start()`中，我们将事件循环放到了另一个线程并将其设置为分离线程。在`Client::stop()`中关闭事件循环，等待事件循环关闭后再接着把`bev`和`base`清理掉。
-    ![](img/stream.png)
+    ![](imgs/stream.png)
     `Client()`发生在线程池的线程函数退出后，那么就可能发生以下的情况：
 
     `client_->stop()`执行，
@@ -175,7 +175,7 @@
 
     - 实现了云存储服务的配置文件的加载以及服务器的建立，并且与异步日志系统对接。
     - 使用CMake对项目构建系统的架构设计。
-        ![](img/configuration.png)
+        ![](imgs/configuration.png)
 
 <br>
 
@@ -212,7 +212,7 @@
     - 实现了两台服务器(ubuntu server)在终端下载文件，同时，通过访问浏览器，window端也可以在可视化界面上上传和下载文件
     - 修复了服务器启动时无法显示先前上传的文件列表
 
-        ![](img/system_interface.png)
+        ![](imgs/system_interface.png)
 
     - 添加了删除文件功能，同时从`table_`和`storage.data`中删除对应的`StorageInfo`
 
@@ -226,12 +226,12 @@
     使用gdb调试，发现系统启动时会创建17个线程，然后立刻结束16个线程的问题，如图所示，这其中的16个线程来自线程池。
 
     调试发现，系统启动会创建17个线程，然后立刻结束16个线程的问题，如图所示，这其中的16个线程来自线程池。对于异步日志系统的Client(检测到ERROR或者FATAL日志就向远程服务器发送日志信息)，它通过`libevent`来实现其功能，期间会启动一个事件循环，会阻塞住当前线程，因此事件循环被放在了一个分离线程中，导致线程池启动的时候创建了两倍于初始线程数量的线程。初始线程数量为8，因此会一口气创建16个线程。
-    ![](img/thread_problem.png)
+    ![](imgs/thread_problem.png)
 
     查阅代码发现，客户端的启动函数中，先启动了事件循环，再连接服务器，这里顺序有误，导致启动事件循环时没有激活的事件而直接结束，事件循环的结束又导致了`Client->start()`的失败将顺序掉转后，即先连接服务器，再启动事件循环，问题便得以解决，没有线程意外结束。
     
 
-    ![](img/thread_normal.png)
+    ![](imgs/thread_normal.png)
     正确的逻辑，先连接服务器后再启动事件循环，调试结果如下：红色方框是线程池创建的8个线程，并且没有异常的线程结束问题。
 
 - 问题7
@@ -260,7 +260,7 @@
     但是逻辑顺序改正以后，经过调试发现，因为事件循环在连接服务器后才启动，因此连接服务器的这个动作并不会触发事件循环，从而不会调用到`event_callback()`，`(*returnConnectLabel)(label);`执行不到，因此主线程一直被阻塞着，`client->start()`无法结束，从而不能进入线程函数中的循环。删除这个多此一举的操作便可。
     如图所示，用户端尝试下载一个云端不存在的文件，存储系统就向日志系统提交一条`ERROR`级别的日志，日志系统就将该日志发送到“远程”服务器上。
     
-    ![](img/normal_commit.png)
+    ![](imgs/normal_commit.png)
 
 
 <br>
@@ -285,7 +285,7 @@
         buffer_pos_ += (length + 1);  // 加1空一个0作为结束符
     }
     ```
-    ![](img/write_problem.png)
+    ![](imgs/write_problem.png)
 
     通过gdb调试发现是存储系统中的数据管理器`DataManager`初始化时的日志。实验中，云存储中的`low_storage`和`deep_storage`中一共有7个文件，但是从日志消息中我们可以看到，被完整记录的日志数量只有4个。
     ```cpp
@@ -323,7 +323,7 @@
         } 
     }
     ```
-    ![](img/space_avaiable.png)
+    ![](imgs/space_avaiable.png)
 
 <br>
 
@@ -373,7 +373,7 @@
 - 问题10
 
     直接`./Service`时有时候会异常阻塞，只记录了一条从`storage.data`的日志如下图所示，通过`gdb`调试发现阻塞在因为生产者缓冲区空间不足时而释放互斥锁等待的位置（但是用gdb启动就不会有这种问题？）
-    ![](img/abnormal_blockage.png)
+    ![](imgs/abnormal_blockage.png)
     这种情况说明线程一直处于等待状态，但没有通知来唤醒它。
 
     原因在于控制缓冲区的生产者和消费者初始化有严格的先后顺序，之前是通过启动生产者线程后休眠100ms再接着启动消费者线程。但后面这段休眠的代码被删除了，导致了如果消费者速度比较快，率先声明自己已经准备好了，会导致生产者和消费者的协同工作出现问题。
@@ -386,7 +386,7 @@
 
     经过打印测试，复现出程序阻塞时的情况如下图所示：
 
-    ![](img/consumer_innormal.png)
+    ![](imgs/consumer_innormal.png)
 
     明确一点，`label_consumer_ready_`初始化的时候就是`true`。按照此图的分析，<u>消费者应该处于临界区之外而非等待中</u>。第一个用户提交用户之前的输出，因为还没有提交过，所以`label_data_ready_`为`false`，随后的两个用户提交就都是`true`，但第三个用户提交时生产者缓冲区空间不足了，因此等待。生产者拿到了互斥锁，`label_consumer_ready_`和`label_data_ready_`都满足条件，从而往下执行交换缓冲区。交换后这俩标志都会被置为`false`。由于生产者通知了用户和消费者，但是消费者就存在一种可能：<u>消费者在生产者交换缓冲区后抢到了锁，进入临界区并把`label_consumer`置为`true`，判断该标签不为`false`就等待</u>。接下来消费者有抢到了锁(之前提交失败的)就提交日志，并把`label_data_ready_`置为`true`，因此下一个正常提交的用户提交之前的打印的情况就又是`label_data_ready_`和`label_consumer_ready_`都为`true`的景象，消费者表示准备就绪状态，但是自己还有数据没有处理。
     
@@ -518,7 +518,7 @@
 
     将`backup`的远程服务器(实际为本地服务器)替换为真正的本地服务器，并成功连接：
 
-    ![](img/connected_backlog.png)
+    ![](imgs/connected_backlog.png)
 
 
 <br>
@@ -647,7 +647,7 @@
 
     首先，`虚拟内存`是指每一个进程创建和加载过程中，分配的一段连续的非真实存在的地址空间，它通过映射到实际物理内存上来对应。`页面`是操作系统管理内存的最小单位，大小一般是4K。`缺页中断`是指CPU硬件触发的异常，当程序访问的虚拟地址还没有对应的物理内存时，内核为其分配一个物理页面。`页面交换`指的是当物理内存不足时，操作系统可以将一部分数据从物理内存写到磁盘当中，当需要时，数据可以再次从虚拟内存中加载到物理内存当中。
     
-    ![](img/PAGE_SIZE.png)
+    ![](imgs/PAGE_SIZE.png)
 
     一开始为这个字符串分配了6G的虚拟内存空间，开始往虚拟内存“写入”数据。对于第一个虚拟内存页，会先找到映射到的物理内存页(第一次就通过缺缺页中断分配一个物理内存，通过页表映射)，然后写入数据，之后的操作一样。一直到物理内存不足时，就会触发页面交换(各种页面置换算法，比如LRU, FIFO等)，把其他进程不活跃的页面给置换出去。如果物理内存还是不足(或者置换到了早期的6G数据的页面)，那么最终就会因为内存耗尽(OOM)而杀死该程序。
 
@@ -879,7 +879,7 @@
 
     将网络库换成muduo后，能正常打开页面，但是不能上传文件。显示
 
-    ![](img/connection_error.png)
+    ![](imgs/connection_error.png)
 
     先把中间件去掉。。。然后依然网络连接失败，这次是`OPTIONS`的问题，因为没有和这个请求方法匹配的路由函数。
     
@@ -946,9 +946,9 @@
 
     缺了一部分后面追加是能够正常处理的，问题在于你分块读取但是在写入的时候长度使用的`Content-Length`，修改后大部分问题都解决了。
 
-    ![](img/errorline_1.png)
+    ![](imgs/errorline_1.png)
 
-    ![](img/errorline_2.png)
+    ![](imgs/errorline_2.png)
 
     尝试上传一个4.43 GB的文件，上传过程如下，即便内存只有4G，可用内存可能更少，也能够进行传输。
 
@@ -1028,5 +1028,36 @@
 
 40. 2026.4.23
 
-    实现了大文件下载功能
+    实现了大文件下载功能，并验证了上传和下载的文件没有错误(不会丢失数据，压缩包能够正常的打开)
+
+41. 2026.4.24
+
+    因为`TcpConnection` 的 `outputBuffer` 中数据是通过事件回调的方式进行发送的，也就是`EPOLLOUT`事件(socket缓冲区中可写)触发时，调用handleWrite()。因此原先在onRequest()中循环发送是没用的，因为handleWrite()的调用最早在下一次的epoll_wait()，而循环在本次的epoll_wait()中完成。
+
+    当handleWrite()将`outputBuffer`中的数据写入缓冲区时，如果`outputBuffer`空了，就会调用writeCompleteCallback(), 就可以利用这个回调函数。
+
+    数据分块传输，调用onRequest()的send, 发送一个chunk，由于chunk大小大于socket缓冲区大小，因此一次write无法把数据都写入socket缓冲区中，剩下的数据进入outputBuffer，启动对EPOLLOUT的监听。当socket缓冲区可写时，就会触发对应的回调函数，把outputBuffer中的数据写入socket缓冲区，如果还有剩，就能带下次socket缓冲区可写，如果没有剩，就调用writeCompleteCallback，把下一个chunk写入，重复这个流程直到数据全部发送过去。
+    
+42. 2026.4.25
+
+    使用libevent封装类似的HttpServer，不直接使用evhttp，来处理大文件上传下载的问题。
+
+    bufferevent_write()和操作和TcpConnection::send()类似，内部调用evbuffer_add(), 将数据写入到bufferevent中的输出缓冲区bev->output当中(类似TcpConnection的outputBuffer)，当socket缓冲区有空间时就会调用回调函数来将其中的数据写入。
+
+    ```cpp
+    bufferevent_setcb(ctx->bev, &HttpServer::readCallback, &HttpServer::writeCallback, &HttpServer::eventCallback, ctx);
+
+    void HttpServer::writeCallback(bufferevent*, void* arg){
+        auto* ctx = static_cast<ConnectionContext*>(arg);
+
+        // 大文件下载时，写完成回调就是“发送下一块”的节流点，避免一次性把整个文件塞进输出缓冲区。
+        if(ctx->download && ctx->download->file_size > 0){
+            ctx->server->sendNextDownloadChunk(ctx);
+            ...
+        }
+    }
+    ```
+    这里的 `sendNextDownloadChunk()` 就是按块发送的逻辑，他会在判断完是大文件后直接调用一次，将响应体外的部分作为第一块发送过去，之后的响应体都通过事件回调的方法来调用这个函数，将数据块发送过去，直到所有的数据都发送过去了。
+    
+    修复了原先部分HTTP响应头的内容被浏览器当成文件内容保存，导致前面多了几十个字节，尾部少了几十个字节，虽然总的大小是对的，但是文件内容有误的问题。
 

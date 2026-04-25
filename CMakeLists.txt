@@ -60,4 +60,5 @@ find_package(Threads REQUIRED)
 # 注意顺序：先添加库，后添加应用程序
 add_subdirectory(log_system)
 add_subdirectory(HttpServer)
+add_subdirectory(HttpServer_v2)
 add_subdirectory(src)
