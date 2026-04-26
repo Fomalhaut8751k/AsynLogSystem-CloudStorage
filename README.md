@@ -1061,3 +1061,48 @@
     
     修复了原先部分HTTP响应头的内容被浏览器当成文件内容保存，导致前面多了几十个字节，尾部少了几十个字节，虽然总的大小是对的，但是文件内容有误的问题。
 
+43. 2026.4.26
+
+    目前一共有三种日志结构：双缓冲区，链表，以及deque，测试比较一下三者的性能差距：
+
+    - `LOGGERTYPE=1`: `AsyncWorker.hpp`，双缓冲区模式
+    - `LOGGERTYPE=2`: `AsyncWorkerWithLogQueue.hpp`，链表队列模式
+    - `LOGGERTYPE=3`: `AsyncWorkerWithLogDeque.hpp`，deque队列模式
+
+    测试文件为 `log_system/include/async_logger_system_test.cpp`，只统计调用线程向日志系统写入 `Info()` 日志的速度，不把异步输出到文件、远程线程池连接状态计入测试结论。编译方式如下：
+
+    ```bash
+    g++ async_logger_system_test.cpp -DLOGGERTYPE=1 -g -o /tmp/async_logger_system_test_type1 -levent -levent_pthreads -lpthread
+    g++ async_logger_system_test.cpp -DLOGGERTYPE=2 -g -o /tmp/async_logger_system_test_type2 -levent -levent_pthreads -lpthread
+    g++ async_logger_system_test.cpp -DLOGGERTYPE=3 -g -o /tmp/async_logger_system_test_type3 -levent -levent_pthreads -lpthread
+    ```
+
+    本轮每种结构测试三次，结果如下：
+
+    | 结构 | 第一次 | 第二次 | 第三次 | 平均 |
+    | --- | ---: | ---: | ---: | ---: |
+    | 双缓冲区 | 1,341,868 条/s | 1,412,945 条/s | 1,355,799 条/s | 1,370,204 条/s |
+    | 链表队列 | 1,111,507 条/s | 1,132,072 条/s | 1,184,864 条/s | 1,142,814 条/s |
+    | deque队列 | 1,444,479 条/s | 1,546,294 条/s | 1,492,920 条/s | 1,494,564 条/s |
+
+    以当前测试日志格式化后约 `170B/条` 粗略估算，三种结构的平均吞吐约为：
+
+    | 结构 | 平均吞吐 |
+    | --- | ---: |
+    | deque队列 | 242.31 MB/s |
+    | 双缓冲区 | 222.14 MB/s |
+    | 链表队列 | 185.28 MB/s |
+
+    最终排名为：
+
+    ```text
+    deque队列 > 双缓冲区 > 链表队列
+    ```
+
+    deque队列性能最好，原因是写入路径最短：生产者线程只需要格式化日志、获取队列锁、`emplace_back(std::move(message))`、更新队列字节数。消费者通过 `swap` 批量取走队列后在锁外拼接和输出，因此生产者持锁时间很短。`std::deque` 虽然存在分段扩容成本，但它避免了链表每条日志的节点维护和智能指针引用计数，整体更适合当前这种高频小日志写入测试。
+
+    双缓冲区模式排第二。它的优势是日志正文写入连续内存，批量输出时对缓存更友好，适合大批量连续落盘。经过优化后，写入端由 `AsyncWorker::Mutex_User` 统一保护，`AsyncBuffer` 增加了 `writeNoLock()`、`readNoLock()`、`clearNoLock()` 和 `scaleUpNoLock()`，减少了原先外层锁加内部 buffer 锁的重复开销。双缓冲区仍然慢于 deque，主要因为每条日志都要 `memcpy` 到生产者缓冲区，并且还要维护缓冲区容量、交换状态和条件变量同步。它的结构更复杂，但在输出端批量处理方面仍有优势。
+
+    链表队列模式最慢。虽然链表避免了连续大块内存扩容，也通过节点池减少了部分分配开销，但每条日志仍然需要获取队列锁和节点池锁，维护 `shared_ptr/weak_ptr` 节点关系，进行头插、尾删和引用计数更新。链表节点分散在内存中，cache locality 也比 deque 和双缓冲差。对于高频小日志，链表的 per-log 固定成本大于它避免扩容带来的收益。
+
+    因此，如果只看日志写入性能，当前更推荐 deque 队列模式；如果更重视连续内存批量输出和结构上的生产者/消费者分离，双缓冲区仍有保留价值；链表模式更适合作为结构实验或处理特殊的大日志组织场景，不适合作为当前默认高吞吐实现。

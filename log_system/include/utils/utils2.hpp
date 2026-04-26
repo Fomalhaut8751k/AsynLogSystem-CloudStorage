@@ -247,7 +247,7 @@ public:
         // 原来 logSize 的阈值检查和更新在锁外，存在数据竞争。
         std::lock_guard<std::mutex> lock(Mutex);
         if(slen != -1 && s.length() + logSize > insert_threshold){  // 如果链表已经满了，就不再添加
-            return -1;
+            return 0;
         }
 
         std::shared_ptr<LogNode> nnode = getConnection();  // 如果节点池中有，就使用池中的节点，否则返回空
@@ -276,8 +276,9 @@ public:
 
     std::uint32_t insertFromHead(std::string&& s, const int& slen = 0, unsigned int insert_threshold = 512 * 1024 * 1024){
         std::lock_guard<std::mutex> lock(Mutex);
-        if(slen != -1 && s.length() + logSize > insert_threshold){  // 如果链表已经满了，就不再添加
-            return -1; 
+        const std::uint32_t len = s.length();
+        if(slen != -1 && len + logSize > insert_threshold){  // 如果链表已经满了，就不再添加
+            return 0; 
         }
         std::shared_ptr<LogNode> nnode = getConnection();  // 如果节点池中有，就使用池中的节点，否则返回空
         if(!nnode){
@@ -298,7 +299,7 @@ public:
             logSize = 0;  // 插入label节点后，就相当于label到pre的这段空间没有节点，是空的了，可以插入
             return logSizeCopy;  // 删除操作会先插入一个label，然后返回此时的日志量
         }
-        else logSize += (s.length() + 1);
+        else logSize += (len + 1);
         return logSize;
     }
 

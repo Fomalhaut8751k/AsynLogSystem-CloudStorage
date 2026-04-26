@@ -35,6 +35,7 @@ namespace mylog
             
             buffer_.resize(init_buffer_size_, '\0');  // 预留UNIT_SPACE大小的空间
             buffer_pos_ = 0;
+            buffer_size_ = init_buffer_size_;
         }
 
         ~AsyncBuffer() = default;
@@ -70,7 +71,15 @@ namespace mylog
                 std::unique_lock<std::mutex> lock(BufferReadMutex_);
                 buffer_.resize(buffer_.size() + expand_size, '\0');
             }
-            // buffer_size_ += expand_size;
+            buffer_size_ = buffer_.size();
+            return 0;
+        }
+
+        int scaleUpNoLock(unsigned int expand_size)
+        {
+            if(expand_size <= 0) { return -1; }
+            buffer_.resize(buffer_.size() + expand_size, '\0');
+            buffer_size_ = buffer_.size();
             return 0;
         }
 
@@ -113,6 +122,11 @@ namespace mylog
                 如果一个用户将要写入数据，发现缓冲区不够写了，就等待？
             */
             std::unique_lock<std::mutex> lock(BufferWriteMutex_);
+            writeNoLock(message_unformatted, length);
+        }
+
+        void writeNoLock(const char* message_unformatted, unsigned int length)
+        {
             std::memcpy(buffer_.data() + buffer_pos_, message_unformatted, length);
             buffer_pos_ += length;  
             buffer_[buffer_pos_++] = '\n';  // 加1空一个\n作为换行符
@@ -148,6 +162,10 @@ namespace mylog
         // 获取缓冲区的日志信息三
         std::string read(int option){
             std::unique_lock<std::mutex> lock(BufferReadMutex_);
+            return readNoLock();
+        }
+
+        std::string readNoLock(){
             auto it = buffer_.begin() + buffer_pos_ - 1;  // 最后一个\n不要
             return std::string(buffer_.begin(), it);
         }
@@ -155,6 +173,10 @@ namespace mylog
         // 清空缓冲区的消息
         void clear(){
             // buffer_.assign(buffer_size_, '\0');  // 清空缓冲区的数据
+            clearNoLock();
+        }
+
+        void clearNoLock(){
             buffer_.assign(buffer_.size(), '\0');
             buffer_pos_ = 0;
         }

@@ -149,6 +149,8 @@ namespace mylog{
             exitLabel_(false),
             exitSemaphore(1){
             cnt = 0;
+            diskInfo_ = DiskSpaceChecker::get_disk_info("/");
+            diskInfoAvailable_ = diskInfo_.available_bytes;
         }
 
         ~AsyncWorkerWithLogQueue(){
@@ -169,7 +171,8 @@ namespace mylog{
                 // 已经禁止提交了，就直接返回
                 return;
             }
-            if(diskInfoAvailable_ - message.length() < SPACE_ERROR_THRESHOLD){
+            const std::uint64_t messageSize = message.length() + 1;
+            if(diskInfoAvailable_ < messageSize + SPACE_ERROR_THRESHOLD){
 #if CSWARN      // 磁盘空间到达预警阈值，选择直接丢弃日志
                 logFuncDefault_("Disk warning: The current available space is insufficient. Please free up space");
 #endif
@@ -181,7 +184,7 @@ namespace mylog{
 #endif
                 return;
             }
-            diskInfoAvailable_ -= (message.length() + 1);
+            diskInfoAvailable_ -= messageSize;
             if(logQueue_->getLogSize() > 5 * LOG_BUFFER_MAX_SIZE / 6){
                 condV_.notify_one();
             }
@@ -192,7 +195,8 @@ namespace mylog{
                 // 已经禁止提交了，就直接返回
                 return;
             }
-            if(diskInfoAvailable_ - message.length() < SPACE_ERROR_THRESHOLD){
+            const std::uint64_t messageSize = message.length() + 1;
+            if(diskInfoAvailable_ < messageSize + SPACE_ERROR_THRESHOLD){
 #if CSWARN      // 磁盘空间到达预警阈值，选择直接丢弃日志
                 logFuncDefault_("Disk warning: The current available space is insufficient. Please free up space");
 #endif
@@ -204,7 +208,7 @@ namespace mylog{
 #endif
                 return;
             }
-            diskInfoAvailable_ -= (message.length() + 1);
+            diskInfoAvailable_ -= messageSize;
             if(logQueue_->getLogSize() > 5 * LOG_BUFFER_MAX_SIZE / 6){
                 condV_.notify_one();
             }

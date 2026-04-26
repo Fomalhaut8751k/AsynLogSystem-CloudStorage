@@ -134,6 +134,7 @@ namespace mylog
                 std::unique_lock<std::mutex> lock(Mutex_User);
                 // 第一阶段，关闭用户提交日志窗口，等待剩余日志处理完成
                 ProhibitSummbitLabel_ = true;
+                cond_writable_.notify_all();
                 cond_exit_.wait(lock, [&]()->bool { return user_current_count_ == 0; } );
             }
             
@@ -329,9 +330,9 @@ namespace mylog
                     label_consumer_ready_ = false;
                     if(!buffer_consumer_) continue;
                     if(!buffer_consumer_->getEmpty()){
-                        message_formatted = buffer_consumer_->read(0);
+                        message_formatted = buffer_consumer_->readNoLock();
                     }
-                    buffer_consumer_->clear();
+                    buffer_consumer_->clearNoLock();
                     label_consumer_ready_ = true;
                 }
                 log_func_(message_formatted);  // 一次性将所有日志输出
@@ -339,6 +340,17 @@ namespace mylog
         }
 
         // 对外提供一个写入的接口
+        void LogQueueForward(const std::string& message)
+        {
+            readFromUser(message, message.length());
+        }
+
+        void LogQueueForward(std::string&& message)
+        {
+            const unsigned int buffer_length = message.length();
+            readFromUser(std::move(message), buffer_length);
+        }
+
         void readFromUser(std::string message, unsigned int buffer_length)
         {
             // 如果禁止提交，已经进来排队的就等处理，如果刚进来的就劝退
@@ -353,53 +365,46 @@ namespace mylog
                 return; 
             }
 
-            const char* buffer = message.c_str();
             user_current_count_ += 1;
+            bool should_notify = false;
 
             {
                 std::unique_lock<std::mutex> lock(Mutex_User);  
-                // 如果生产者的空间不足以写入，就释放锁等待，生产者的缓冲区有空间会通知
+                const char* buffer = message.c_str();
                 enum WaitStatus status;
-                unsigned int buffer_size = 0;
                 while(1){
-                    cond_writable_.wait(
-                        lock, [&]()->bool{ 
-                            // 如果磁盘空间不足，就需要暂停写入，等开发者手动清理内存，而不是直接丢弃
-                            if(info_available < SPACE_AVAILABLE){  
-                                log_func_default("Disk warning: The current available space is insufficient. Please free up space");
-                                status = WaitStatus::DISKINSUFFICIENT; 
-                                return true;
-                            }
-                            // 如果磁盘空间足够，且缓冲区的大小足够，就直接返回
-                            if(buffer_productor_->getAvailable() > buffer_length){  
-                                status = WaitStatus::BUFFERABAILABLE;
-                                return true;
-                            }
-                            // 如果不够，并且已经达到缓冲区扩容的最大容量上限了
-                            else{ 
-                                if(buffer_productor_->getSize() >= LOG_BUFFER_MAX_SIZE_){  
-                                    // log_func_default("The buffer has been expanded to its maximum capacity, and log submission will be blocked");
-                                    return false;
-                                }
-                                // 否则就扩容，扩容生产者和消费者的缓冲区, 到原来的两倍
-                                while(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE_ && buffer_productor_->getAvailable() <= buffer_length){  
-                                    buffer_productor_->scaleUp(buffer_productor_->getSize(), 0);
-                                    buffer_consumer_->scaleUp(buffer_productor_->getSize(), 1);  // 扩容的时候也会扩消费者缓冲区，但是和消费者线程不互斥
-                                    current_effective_expansion_times = effective_expansion_times;
-                                }
-                                if(buffer_productor_->getAvailable() > buffer_length){
-                                    status = WaitStatus::BUFFERABAILABLE;
-                                    return true;
-                                }
-                                else{
-                                    return false;
-                                }
-                            }
-                            return true;
+                    if(info_available < SPACE_AVAILABLE){  
+                        log_func_default("Disk warning: The current available space is insufficient. Please free up space");
+                        status = WaitStatus::DISKINSUFFICIENT; 
+                    }
+                    else if(buffer_productor_->getAvailable() > buffer_length){  
+                        status = WaitStatus::BUFFERABAILABLE;
+                    }
+                    else{
+                        while(buffer_productor_->getSize() < LOG_BUFFER_MAX_SIZE_ && buffer_productor_->getAvailable() <= buffer_length){  
+                            buffer_productor_->scaleUpNoLock(buffer_productor_->getSize());
+                            current_effective_expansion_times = effective_expansion_times;
                         }
-                    );
+                        if(buffer_productor_->getAvailable() > buffer_length){
+                            status = WaitStatus::BUFFERABAILABLE;
+                        }
+                        else{
+                            cond_productor_.notify_one();
+                            cond_writable_.wait(lock);
+                            if(ProhibitSummbitLabel_){
+                                user_current_count_ -= 1;
+                                if(user_current_count_ == 0){
+                                    cond_exit_.notify_all();
+                                }
+                                return;
+                            }
+                            continue;
+                        }
+                    }
+
                     if(status == WaitStatus::BUFFERABAILABLE){
-                        buffer_productor_->write(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+                        buffer_productor_->writeNoLock(buffer, buffer_length);   // 把日志信息写入生产者的buffer中
+                        should_notify = buffer_productor_->getAvailable() < buffer_productor_->getSize() / 6;
                         break;
                     }
                     else if(status == WaitStatus::DISKINSUFFICIENT){
@@ -411,7 +416,9 @@ namespace mylog
                 
             }
             label_data_ready_ = true;  // 设置标志
-            cond_productor_.notify_all();   // 并通知生产者可以来处理日志信息了
+            if(should_notify){
+                cond_productor_.notify_one();   // 缓冲区接近满时提醒后台线程交换
+            }
 
             user_current_count_ -= 1;
             // 如果是最后一个用户，就提醒析构函数

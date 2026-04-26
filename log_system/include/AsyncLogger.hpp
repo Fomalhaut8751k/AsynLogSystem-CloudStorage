@@ -16,7 +16,9 @@
 #include "backlog/ClientBackupLog.hpp"
 #include "ThreadPool.hpp"
 
-#define LOGGERTYPE 2   // 0, 1, 2, 3
+#ifndef LOGGERTYPE
+#define LOGGERTYPE 3   // 0, 1, 2, 3
+#endif
 
 // 抽象的产品(异步日志器)类
 class AbstractAsyncLogger
@@ -68,7 +70,7 @@ public:
     }
 
     // 提交日志
-    void log(std::string formatted_message)
+    void log(const std::string& formatted_message)
     {   
         if(flush_){
             flush_->flush(formatted_message);
@@ -238,7 +240,7 @@ namespace mylog
                 std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)
             );
 #elif LOGGERTYPE == 1
-            让worker的消费者线程可以将日志发送到指定为止
+            // 让worker的消费者线程可以将日志发送到指定为止
             worker_ = std::make_shared<mylog::AsyncWorker>(
                 std::bind(&AsyncLogger::log, this, std::placeholders::_1),
                 std::bind(&AsyncLogger::WarnDefault, this, std::placeholders::_1)

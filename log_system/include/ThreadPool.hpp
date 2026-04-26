@@ -207,7 +207,7 @@ namespace mylog
             }
         }
 
-        void submitLog(const std::string log_message)
+        void submitLog(std::string log_message)
         {
             std::unique_lock<std::mutex> lock(logQueMtx_);
             // 如果当前队列已经满了,就等待队列为空，或者超时，如果是因为队列空唤醒的，则可以执行接下来的提交任务操作，否则视为提交失败
@@ -219,9 +219,10 @@ namespace mylog
             ) 
             {   // 如果是超时返回的，视为提交失败
                 std::cerr << "task queue is full, submit task fail." << std::endl;
+                return;
             }
             // 如果是因为taskQue_有空闲位置而被唤醒，则添加到任务队列，并通知线程
-            logQue_.emplace(log_message);
+            logQue_.emplace(std::move(log_message));
             logSize_++;
             notEmpty_.notify_all();        
         }
