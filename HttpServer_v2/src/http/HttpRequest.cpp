@@ -89,7 +89,19 @@ void HttpRequest::addHeader(const char* start, const char* colon, const char* en
 std::string HttpRequest::getHeader(const std::string& field) const
 {
     auto it = headers_.find(field);
-    return it == headers_.end() ? "" : it->second;
+    if(it != headers_.end()) return it->second;
+
+    std::string normalizedField = field;
+    std::transform(normalizedField.begin(), normalizedField.end(), normalizedField.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    for(const auto& header: headers_)
+    {
+        std::string normalizedHeader = header.first;
+        std::transform(normalizedHeader.begin(), normalizedHeader.end(), normalizedHeader.begin(),
+            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        if(normalizedHeader == normalizedField) return header.second;
+    }
+    return "";
 }
 
 void HttpRequest::setBody(const char* start, const char* end)

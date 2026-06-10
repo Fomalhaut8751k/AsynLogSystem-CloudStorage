@@ -14,8 +14,10 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <regex>
+#include <map>
 
 // #include <mymuduo/Logger.h>
 
@@ -99,45 +101,91 @@ namespace mystorage
 
         */
         
+        // 目录树节点：dirs 是子目录(名字->节点)，files 是本层直属文件
+        struct TreeNode {
+            std::map<std::string, TreeNode> dirs;
+            std::vector<const StorageInfo*> files;
+        };
+
+        // 按 rel_path_ 把文件插入目录树：逐段下钻目录，最后一段为文件名挂到当前层
+        void insertToTree(TreeNode& root, const StorageInfo* file){
+            const std::string& rp = file->rel_path_;
+            TreeNode* cur = &root;
+            size_t start = 0;
+            while(true){
+                size_t sep = rp.find('/', start);
+                if(sep == std::string::npos){
+                    cur->files.push_back(file);
+                    break;
+                }
+                cur = &cur->dirs[rp.substr(start, sep - start)];
+                start = sep + 1;
+            }
+        }
+
+        // 递归渲染一层目录内容：先渲染可折叠子目录，再渲染本层文件。
+        // prefix 为当前层完整相对路径(带尾部 '/'，根层为空)，用于"下载文件夹"按钮的标识。
+        void renderTreeChildren(std::stringstream& ss, const TreeNode& node, const std::string& prefix){
+            for(const auto& kv : node.dirs){
+                std::string full = prefix + kv.first;  // 该子目录的完整相对路径
+                ss << "<div class='folder-group'>"
+                   << "<div class='folder-header' onclick='toggleFolder(this)'>"
+                   << "<span class='folder-toggle'>&#9654;</span>"
+                   << "<span class='folder-name'>&#128193; " << kv.first << "</span>"
+                   << "<button class='btn-download' onclick=\"event.stopPropagation(); downloadFolder('"
+                   << escapeJs(full) << "')\">&#128230; 下载文件夹</button>"
+                   << "<button class='btn-delete' onclick=\"event.stopPropagation(); deleteFolder('"
+                   << escapeJs(full) << "')\">&#128465; 删除文件夹</button>"
+                   << "</div>"
+                   << "<div class='folder-children' style='display:none;'>";
+                renderTreeChildren(ss, kv.second, full + "/");
+                ss << "</div></div>";
+            }
+            for(const StorageInfo* file : node.files){
+                renderFileItem(ss, *file);
+            }
+        }
+
         std::string generateModernFileList(const std::vector<StorageInfo>& files){
             std::stringstream ss;
             ss << "<div class='file-list'><h3>已上传文件</h3>";
 
-            for(const auto& file: files) {
-                std::string filename = FileUtil(file.storage_path_).FileName();
-                
-                // 从路径中解析存储类型
-                std::string storage_type = "low";
-                if(file.storage_path_.find("deep") != std::string::npos)
-                    storage_type = "deep";
-                
-                // 【关键】获取文件大小（原始字节数，不是格式化后的字符串）
-                uint64_t file_size_bytes = file.fsize_;  // 确保这是原始字节数
-                
-                // 调试输出
-                // std::cout << "生成文件列表项: " << filename 
-                //         << ", 大小(字节): " << file_size_bytes << std::endl;
-                
-                ss << "<div class='file-item'>"
-                << "<div class='file-info'>"
-                << "<span>📄 " << filename << "</span>"
-                << "<span class='file-type'>"
-                << (storage_type == "deep" ? "深度存储" : "普通存储")
-                << "</span>"
-                << "<span class='file-size'>💾 " << formatSize(file_size_bytes) << "</span>"
-                << "<span class='file-time'>🕒 " << TimetoStr(file.mtime_) << "</span>"
-                << "</div>"
-                << "<div class='button-group'>"
-                << "<button class='btn-download' onclick=\"downloadFile('" << escapeJs(filename) << "', '" << file_size_bytes << "')\">📥 下载</button>"
-                //                                                          ^^^^^^^^^^^^^^^^
-                //                                            传递原始字节数，不是格式化字符串
-                << "<button class='btn-delete' onclick=\"deleteFile('" << escapeJs(filename) << "')\">🗑️ 删除</button>"
-                << "</div>"
-                << "</div>";
+            // 构建嵌套目录树后递归渲染：根级文件平铺，文件夹可展开/折叠
+            TreeNode root;
+            for(const auto& file : files){
+                insertToTree(root, &file);
             }
-            
+            renderTreeChildren(ss, root, "");
+
             ss << "</div>";
             return ss.str();
+        }
+
+        // 渲染单个文件条目，下载/删除均以 rel_path_ 作为标识
+        void renderFileItem(std::stringstream& ss, const StorageInfo& file){
+            std::string rel_path = file.rel_path_;
+            std::string display = FileUtil(file.storage_path_).FileName();
+
+            std::string storage_type = "low";
+            if(file.storage_path_.find("deep") != std::string::npos)
+                storage_type = "deep";
+
+            uint64_t file_size_bytes = file.fsize_;
+
+            ss << "<div class='file-item'>"
+            << "<div class='file-info'>"
+            << "<span>📄 " << display << "</span>"
+            << "<span class='file-type'>"
+            << (storage_type == "deep" ? "深度存储" : "普通存储")
+            << "</span>"
+            << "<span class='file-size'>💾 " << formatSize(file_size_bytes) << "</span>"
+            << "<span class='file-time'>🕒 " << TimetoStr(file.mtime_) << "</span>"
+            << "</div>"
+            << "<div class='button-group'>"
+            << "<button class='btn-download' onclick=\"downloadFile('" << escapeJs(rel_path) << "', '" << file_size_bytes << "')\">📥 下载</button>"
+            << "<button class='btn-delete' onclick=\"deleteFile('" << escapeJs(rel_path) << "')\">🗑️ 删除</button>"
+            << "</div>"
+            << "</div>";
         }
 
         // 辅助函数：转义 JavaScript 字符串
@@ -152,6 +200,15 @@ namespace mystorage
                 else result += c;
             }
             return result;
+        }
+
+        // 校验客户端传来的相对路径是否安全，防止目录穿越:
+        // 拒绝空串、绝对路径(以 / 开头)、含 ".." 的路径
+        static bool IsSafeRelPath(const std::string& rel_path) {
+            if (rel_path.empty()) return false;
+            if (rel_path.front() == '/') return false;
+            if (rel_path.find("..") != std::string::npos) return false;
+            return true;
         }
 
         // ETAG协商缓存
@@ -179,7 +236,9 @@ namespace mystorage
                 mylog::GetLogger(logger_name_)->Info("get request, uri: " + path);
 
                 // 根据请求中的内容判断是什么请求
-                if(path.find("/download") != std::string::npos){  // 下载
+                if(path.find("/download_folder") != std::string::npos){  // 文件夹打包下载
+                    server_->DownloadFolder(req, resp);
+                }else if(path.find("/download") != std::string::npos){  // 下载
                     server_->Download(req, resp);
                 }else if(path == "/upload"){  // 上传
                     server_->Upload(req, resp);
@@ -187,6 +246,8 @@ namespace mystorage
                     server_->ListShow(req, resp);
                 }else if(path == "/list"){  // 把文件列表发送给客户端
                     
+                }else if(path == "/remove_folder"){  // 删除整个文件夹(含子目录与文件)
+                    server_->RemoveFolder(req, resp);
                 }else if(path == "/remove"){  // 删除文件
                     server_->Remove(req, resp);
                 }else{
@@ -224,13 +285,29 @@ namespace mystorage
             std::string filename = req.getHeader("FileName");
             filename = base64_decode(filename);
 
+            // 文件夹上传：相对路径放在 RelPath 头(base64)，保留目录层级；
+            // 不存在时回退到 FileName(basename)，兼容单文件上传
+            std::string rel_path = req.getHeader("RelPath");
+            if(!rel_path.empty()){
+                rel_path = base64_decode(rel_path);
+                if(!IsSafeRelPath(rel_path)){
+                    resp->setStatusLine(req.getVersion(), http::HttpResponse::k400BadRequest, "ILLEGAL REL PATH");
+                    mylog::GetLogger(logger_name_)->Error("Upload fail because illegal rel path: " + rel_path);
+                    return -1;
+                }
+            }else{
+                rel_path = filename;
+            }
+
             // 获取请求体中的文件内容和长度
-            std::string content = req.getBody();  
+            std::string content = req.getBody();
             // size_t len = std::stoi(req.getHeader("Content-Length"));  如果是分块写入，那就不能是content-length
             size_t len = content.size();
-            if(0 == len){
+            // 空文件(如 __init__.py / .gitkeep)是合法的：仅当声明了非零长度却收到空体时，
+            // 才视为上传被截断而拒绝；客户端本就声明 Content-Length:0 的空文件放行。
+            if(0 == len && req.contentLength() > 0){
                 resp->setStatusLine(req.getVersion(), http::HttpResponse::k400BadRequest, "FILE EMPTY");
-                mylog::GetLogger(logger_name_)->Warn("Upload fail because size is zero");
+                mylog::GetLogger(logger_name_)->Warn("Upload fail because body is empty but content-length is non-zero");
                 return -1;
             }
 
@@ -253,9 +330,15 @@ namespace mystorage
             FileUtil dirCreate(storage_path);
             dirCreate.CreateDirectory();
 
-            // 目录后追加文件名就是最终要写入的文件目录
-            storage_path += filename;
+            // 目录后追加相对路径就是最终要写入的文件目录(保留文件夹层级)
+            storage_path += rel_path;
             FileUtil fu(storage_path);
+            // 若相对路径包含子目录，先递归创建其父目录
+            size_t last_sep = storage_path.find_last_of('/');
+            if(last_sep != std::string::npos){
+                FileUtil subDirCreate(storage_path.substr(0, last_sep));
+                subDirCreate.CreateDirectory();
+            }
             // 浅度存储
             if(storage_path.find("low_storage") != std::string::npos){
                 // 往文件中写入内容
@@ -279,7 +362,17 @@ namespace mystorage
             }
             // 深度存储
             else{
-                if(-1 == fu.Compress(content, 4)){
+                // 空文件无需压缩(bundle::pack 对空内容返回空串会被 Compress 判定为失败)，直接写空文件
+                if(0 == len){
+                    if(-1 == fu.SetContent("", 0)){
+                        resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "SERVER ERROR");
+                        mylog::GetLogger(logger_name_)->Error("Upload fail because deep storage empty file SetContent error");
+                        return -1;
+                    }else{
+                        mylog::GetLogger(logger_name_)->Info("deep storage empty file success");
+                    }
+                }
+                else if(-1 == fu.Compress(content, 4)){
                     resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "SERVER ERROR");
                     mylog::GetLogger(logger_name_)->Error("Upload fail because deep storage SetContent error");
                     return -1;
@@ -290,7 +383,7 @@ namespace mystorage
 
             // 上传之后就要添加对应的StorageInfo信息
             StorageInfo info;
-            info.NewStorageInfo(storage_path);
+            info.NewStorageInfo(storage_path, rel_path);
             storage_data_->Insert(info);
             
             json successResp;
@@ -335,7 +428,8 @@ namespace mystorage
             templateContent = std::regex_replace(
                 templateContent,
                 std::regex("\\{\\{BACKEND_URL\\}\\}"),
-                "http://"+mystorage::Config::GetInstance().GetServerIp()+":"+std::to_string(mystorage::Config::GetInstance().GetServerPort())
+                // "http://"+mystorage::Config::GetInstance().GetServerIp()+":"+std::to_string(mystorage::Config::GetInstance().GetServerPort())
+                ""
             );
 
             resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
@@ -378,17 +472,18 @@ namespace mystorage
             storage_data_->GetOneByURL(resource_path, &info);
             std::string download_path = info.storage_path_;
 
-            // 如果是深度存储，先解压到 low_storage
+            // 如果是深度存储，先解压到临时文件
             bool is_temp = false;
             if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos){
                 mylog::GetLogger(logger_name_)->Info("uncompress: " + download_path);
                 FileUtil fu(download_path);
-                download_path = Config::GetInstance().GetLowStorageDir() + std::string(
+                // 解压到 /tmp 下的唯一临时文件名，避免嵌套目录下同名文件相互覆盖
+                std::string base = std::string(
                     download_path.begin() + download_path.find_last_of('/') + 1,
                     download_path.end()
                 );
-                FileUtil dirCreate(Config::GetInstance().GetLowStorageDir());
-                dirCreate.CreateDirectory();
+                download_path = "/tmp/deepdl_" + std::to_string(::getpid()) + "_"
+                    + std::to_string((unsigned long)time(nullptr)) + "_" + base;
                 fu.UnCompress(download_path);
                 // [分块下载] 标记为临时文件，由 writeCompleteCallback 在发完后删除，
                 // 避免原来在 Download() 末尾立即删导致分块发送时文件已不存在
@@ -440,6 +535,104 @@ namespace mystorage
             return 0;
         }
 
+        // 文件夹打包下载：把某顶层文件夹下的所有文件打包成临时 zip，复用大文件分块下发机制
+        int DownloadFolder(const http::HttpRequest& req, http::HttpResponse* resp){
+            mylog::GetLogger(logger_name_)->Info("DownloadFolder start");
+
+            // 文件夹相对路径放在 folder 查询参数(base64)
+            std::string folder = base64_decode(UrlDecode(req.getQueryParameters("folder")));
+            if(folder.empty() || !IsSafeRelPath(folder)){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k400BadRequest, "ILLEGAL FOLDER");
+                mylog::GetLogger(logger_name_)->Error("DownloadFolder fail because illegal folder: " + folder);
+                return -1;
+            }
+            // 去掉结尾的 '/'，统一用 "folder/" 作为前缀筛选
+            while(!folder.empty() && folder.back() == '/') folder.pop_back();
+            std::string prefix = folder + "/";
+
+            // 只信任服务端 table_ 中的数据，按 rel_path_ 前缀筛出该文件夹下的文件
+            std::vector<StorageInfo> all;
+            storage_data_->GetAll(&all);
+            std::vector<StorageInfo> picked;
+            for(const auto& info : all){
+                if(info.rel_path_.compare(0, prefix.size(), prefix) == 0){
+                    picked.push_back(info);
+                }
+            }
+            if(picked.empty()){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k404NotFound, "FOLDER EMPTY");
+                mylog::GetLogger(logger_name_)->Warn("DownloadFolder: no file under " + prefix);
+                return -1;
+            }
+
+            // 生成唯一临时 staging 目录，所有路径均由服务端自己构造，不拼接客户端字符串
+            std::string token = std::to_string(::getpid()) + "_" + std::to_string((unsigned long)time(nullptr));
+            std::string staging = "/tmp/folderdl_" + token;
+            std::string zip_path = staging + ".zip";
+
+            // 把每个文件按 rel_path_ 还原到 staging 目录中(保留子结构)，deep 文件解压
+            for(const auto& info : picked){
+                std::string dest = staging + "/" + info.rel_path_;
+                size_t sep = dest.find_last_of('/');
+                if(sep != std::string::npos){
+                    FileUtil(dest.substr(0, sep)).CreateDirectory();
+                }
+                FileUtil src(info.storage_path_);
+                if(info.storage_path_.find(Config::GetInstance().GetDeepStorageDir()) != std::string::npos){
+                    src.UnCompress(dest);  // 深度存储：解压写入
+                }else{
+                    std::string content;
+                    if(src.GetContent(&content) == -1){
+                        mylog::GetLogger(logger_name_)->Warn("DownloadFolder read fail: " + info.storage_path_);
+                        continue;
+                    }
+                    FileUtil(dest).SetContent(content.c_str(), content.size());
+                }
+            }
+
+            // 在 staging 目录内打包，命令只使用服务端生成的固定路径
+            std::string cmd = "cd " + staging + " && zip -r -q " + zip_path + " .";
+            int rc = ::system(cmd.c_str());
+            // staging 目录已无用，打包后即可删除(zip 已生成在 staging 之外)
+            ::system(("rm -rf " + staging).c_str());
+            if(rc != 0 || !FileUtil(zip_path).Exists()){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "ZIP FAIL");
+                mylog::GetLogger(logger_name_)->Error("DownloadFolder zip fail, rc=" + std::to_string(rc));
+                ::remove(zip_path.c_str());
+                return -1;
+            }
+
+            std::string download_name = folder + ".zip";
+
+            // chunk_prepare：把临时 zip 路径交给大文件分块发送流程，发完由 writeCallback 删除
+            if(resp->getBody() == "chunk_prepare"){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+                resp->addHeader("X-File-Path", zip_path);
+                resp->addHeader("X-Is-Temp", "1");
+                resp->addHeader("Content-Disposition", "attachment; filename=\"" + download_name + "\"");
+                mylog::GetLogger(logger_name_)->Info("DownloadFolder chunk_prepare done: " + zip_path);
+                return 0;
+            }
+
+            // 非分块路径(zip 小于阈值)：一次性读取发送，发完删除临时 zip
+            FileUtil zf(zip_path);
+            std::string content;
+            if(zf.GetContent(&content) == -1){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k500InternalServerError, "NULL");
+                ::remove(zip_path.c_str());
+                return -1;
+            }
+            resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+            resp->addHeader("Content-Type", "application/octet-stream");
+            resp->addHeader("Content-Length", std::to_string(content.size()));
+            resp->addHeader("Content-Disposition", "attachment; filename=\"" + download_name + "\"");
+            resp->setBody(content);
+            ::remove(zip_path.c_str());
+
+            mylog::GetLogger(logger_name_)->Info("DownloadFolder success");
+            return 0;
+        }
+
         // 删除文件
         int Remove(const http::HttpRequest& req, http::HttpResponse* resp){
             mylog::GetLogger(logger_name_)->Info("Remove start");
@@ -467,6 +660,51 @@ namespace mystorage
 
             mylog::GetLogger(logger_name_)->Info("Remove success");
 
+            return 0;
+        }
+
+        // 删除整个文件夹：删掉该相对路径前缀下的所有文件及其 StorageInfo，
+        // 再清理磁盘上残留的空子目录。folder 放在 FileName 头(base64)。
+        int RemoveFolder(const http::HttpRequest& req, http::HttpResponse* resp){
+            mylog::GetLogger(logger_name_)->Info("RemoveFolder start");
+
+            std::string folder = base64_decode(req.getHeader("FileName"));
+            if(folder.empty() || !IsSafeRelPath(folder)){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k400BadRequest, "ILLEGAL FOLDER");
+                mylog::GetLogger(logger_name_)->Error("RemoveFolder fail because illegal folder: " + folder);
+                return -1;
+            }
+            // 去掉结尾的 '/'，统一用 "folder/" 作为前缀筛选
+            while(!folder.empty() && folder.back() == '/') folder.pop_back();
+            std::string prefix = folder + "/";
+
+            // 只信任服务端 table_ 数据，按 rel_path_ 前缀筛出该文件夹下的所有文件
+            std::vector<StorageInfo> all;
+            storage_data_->GetAll(&all);
+            int removed = 0;
+            for(const auto& info : all){
+                if(info.rel_path_.compare(0, prefix.size(), prefix) == 0){
+                    remove(info.storage_path_.c_str());   // 删磁盘文件
+                    storage_data_->Erase(info.url_);       // 删元数据
+                    removed++;
+                }
+            }
+            if(removed == 0){
+                resp->setStatusLine(req.getVersion(), http::HttpResponse::k404NotFound, "FOLDER EMPTY");
+                mylog::GetLogger(logger_name_)->Warn("RemoveFolder: no file under " + prefix);
+                return -1;
+            }
+
+            // 清理两类存储根目录下残留的空子目录(文件已删，目录树可能空着)
+            std::error_code ec;
+            std::experimental::filesystem::remove_all(Config::GetInstance().GetLowStorageDir() + folder, ec);
+            std::experimental::filesystem::remove_all(Config::GetInstance().GetDeepStorageDir() + folder, ec);
+
+            resp->setStatusLine(req.getVersion(), http::HttpResponse::k200Ok, "OK");
+            resp->addHeader("Content-Type", "application/json");
+            resp->setBody("{\"status\":\"success\",\"message\":\"Folder removed\",\"count\":" + std::to_string(removed) + "}\n");
+
+            mylog::GetLogger(logger_name_)->Info("RemoveFolder success, removed=" + std::to_string(removed));
             return 0;
         }
 
@@ -501,8 +739,10 @@ namespace mystorage
             // auto downloadhandler = std::make_shared<GenHandler>(this);
             // httpServer_.addRoute(http::HttpRequest::kGet, "/download/(.+)", downloadhandler);
             httpServer_.Get("/download", std::make_shared<GenHandler>(this));
+            httpServer_.Get("/download_folder", std::make_shared<GenHandler>(this));
 
             httpServer_.Delete("/remove", std::make_shared<GenHandler>(this));
+            httpServer_.Delete("/remove_folder", std::make_shared<GenHandler>(this));
         }
 
         void initializeMiddleWare(){

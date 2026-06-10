@@ -172,6 +172,47 @@
             background: var(--danger-hover);
         }
 
+        /* 目录树：可折叠文件夹与缩进 */
+        .folder-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.8rem 1rem;
+            background: #f7f9fb;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s ease;
+        }
+
+        .folder-header:hover {
+            background: #eef3f7;
+        }
+
+        .folder-toggle {
+            display: inline-block;
+            font-size: 0.8rem;
+            color: var(--secondary-color);
+            transition: transform 0.2s ease;
+        }
+
+        .folder-header.open .folder-toggle {
+            transform: rotate(90deg);
+        }
+
+        .folder-name {
+            font-weight: 600;
+            color: var(--primary-color);
+            flex: 1;
+        }
+
+        /* 子项整体向右缩进，体现层级关系 */
+        .folder-children {
+            margin-left: 1.5rem;
+            padding-left: 0.8rem;
+            border-left: 2px solid #e3e8ee;
+        }
+
         /* 下载进度条样式 */
         .download-progress {
             position: fixed;
@@ -246,7 +287,18 @@
             <button onclick="uploadFile()">
                 ⬆️ 开始上传
             </button>
-            
+
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label>或选择文件夹（保留目录结构）</label>
+                <input type="file" id="folderInput" webkitdirectory directory multiple>
+            </div>
+
+            <button onclick="uploadFolder()">
+                📁 上传文件夹
+            </button>
+
+            <div id="uploadProgress" style="margin-top:1rem; display:none; color:#2980b9;"></div>
+
         </div>
 
         <!-- 文件列表动态插入点 -->
@@ -260,12 +312,23 @@
         };
 
         // 如果后端没有替换 {{BACKEND_URL}}，使用默认值
-        if (config.backendUrl === '{{BACKEND_URL}}') {
-            config.backendUrl = 'http://172.30.173.24:8081';
+        if (config.backendUrl === '{{BACKEND_URL}}' || !config.backendUrl) {
+            // config.backendUrl = 'http://172.30.173.24:8081';
+            // 使用当前页面来源，避免换静态 IP 访问时上传/删除仍请求旧地址导致 CORS Failed。
+            config.backendUrl = window.location.origin;
         }
 
         // ========== 辅助函数 ==========
-        
+
+        // 展开/折叠文件夹：切换 header 的 open 类与紧随其后的子项容器显示
+        function toggleFolder(header) {
+            header.classList.toggle('open');
+            const children = header.nextElementSibling;
+            if (children && children.classList.contains('folder-children')) {
+                children.style.display = (children.style.display === 'none') ? 'block' : 'none';
+            }
+        }
+
         // 显示短暂提示（Toast）
         function showToast(message, type = 'info') {
             let toast = document.getElementById('toast');
@@ -421,6 +484,105 @@
                 console.error('下载错误:', error);
                 hideDownloadProgress();
                 alert(`下载失败: ${error.message}`);
+            }
+        }
+
+        // 上传整个文件夹：遍历文件夹内每个文件，串行 POST 到 /upload，
+        // 用 RelPath 头携带相对路径(base64)，服务端按相对路径重建子目录
+        async function uploadFolder() {
+            const folderInput = document.getElementById('folderInput');
+            const storageType = document.querySelector('input[name="storageType"]:checked').value;
+            const files = folderInput.files;
+
+            if (!files || files.length === 0) {
+                alert('请先选择文件夹');
+                return;
+            }
+
+            const progress = document.getElementById('uploadProgress');
+            progress.style.display = 'block';
+
+            let done = 0;
+            for (const file of files) {
+                // webkitRelativePath 形如 "myfolder/sub/a.txt"，保留目录层级
+                const relPath = file.webkitRelativePath || file.name;
+                const encodedRelPath = btoa(unescape(encodeURIComponent(relPath)));
+                const encodedFilename = btoa(unescape(encodeURIComponent(file.name)));
+
+                progress.textContent = `正在上传 (${done + 1}/${files.length}): ${relPath}`;
+
+                try {
+                    const response = await fetch(`${config.backendUrl}/upload`, {
+                        method: 'POST',
+                        headers: {
+                            'StorageType': storageType,
+                            'RelPath': encodedRelPath,
+                            'FileName': encodedFilename,
+                            'FileSize': String(file.size)
+                        },
+                        body: file
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        alert(`上传失败: ${relPath}\n${response.status} - ${errorText}`);
+                        progress.style.display = 'none';
+                        return;
+                    }
+                } catch (error) {
+                    console.error('上传错误:', error);
+                    alert(`网络连接失败，上传中断于: ${relPath}`);
+                    progress.style.display = 'none';
+                    return;
+                }
+                done++;
+            }
+
+            progress.textContent = `上传完成 (${done}/${files.length})`;
+            location.reload();
+        }
+
+        // 下载整个文件夹：服务端打包为 zip 后通过大文件分块机制下发，
+        // 传一个足够大的 filesize 强制走分块路径，用 anchor 触发浏览器下载
+        function downloadFolder(folderName) {
+            try {
+                const encodedFolder = btoa(unescape(encodeURIComponent(folderName)));
+                const bigSize = '1073741824'; // 1GiB，确保命中服务端大文件分块判断
+                const url = `${config.backendUrl}/download_folder?folder=${encodeURIComponent(encodedFolder)}&filesize=${bigSize}`;
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = folderName + '.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showToast(`文件夹 "${folderName}" 已开始打包下载`, 'info');
+            } catch (error) {
+                console.error('文件夹下载错误:', error);
+                alert(`下载失败: ${error.message}`);
+            }
+        }
+
+        // 删除整个文件夹：服务端按相对路径前缀删除该文件夹下所有子目录与文件
+        async function deleteFolder(folderName) {
+            if (!confirm(`确定要删除文件夹 "${folderName}" 及其中的全部子目录和文件吗？此操作不可恢复。`)) {
+                return;
+            }
+            try {
+                const encodedFolder = btoa(unescape(encodeURIComponent(folderName)));
+                const response = await fetch(`${config.backendUrl}/remove_folder`, {
+                    method: 'DELETE',
+                    headers: {
+                        'FileName': encodedFolder
+                    }
+                });
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const errorText = await response.text();
+                    alert(`删除失败: ${response.status} - ${errorText}`);
+                }
+            } catch (error) {
+                console.error('文件夹删除错误:', error);
+                alert('网络连接失败，无法删除文件夹');
             }
         }
 

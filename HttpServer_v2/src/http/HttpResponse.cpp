@@ -66,6 +66,12 @@ void HttpResponse::appendHeaderToBuffer(Buffer* outputBuf) const
         outputBuf->append(sanitizeHeaderValue(header.second));
         outputBuf->append("\r\n");
     }
+    // keep-alive 连接必须有明确的 body 边界，否则浏览器读不到 body 结束、连接一直挂起。
+    // 业务层未显式设置 Content-Length 时(如 Upload/Remove 的 JSON 响应)，用 body 长度补上。
+    if(headers_.find("Content-Length") == headers_.end())
+    {
+        outputBuf->append("Content-Length: " + std::to_string(body_.size()) + "\r\n");
+    }
     outputBuf->append("\r\n");
 }
 

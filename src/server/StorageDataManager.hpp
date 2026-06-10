@@ -27,8 +27,9 @@ namespace mystorage
         int64_t fsize_;              // 文件大小
         std::string storage_path_;          // 文件的存储路径
         std::string url_;                // url下载地址
+        std::string rel_path_;           // 相对存储根的路径(如 folder/sub/a.txt)，单文件上传时即 basename
 
-        int NewStorageInfo(const std::string &storage_path)
+        int NewStorageInfo(const std::string &storage_path, const std::string& rel_path = "")
         {
             // mylog::GetLogger("default")->Log({"New storageinfo start",  mylog::LogLevel::INFO});
             mylog::GetLogger(logger_name_)->Info("New storageinfo start");
@@ -48,9 +49,11 @@ namespace mystorage
 
             storage_path_ = storage_path;
             // url是用户下载文件请求的路径
-            // 下载路径前缀+文件名
+            // 下载路径前缀+文件名(或相对路径)
             mystorage::Config& config = mystorage::Config::GetInstance();
-            url_ = config.GetDownLoadPrefix() + fu.FileName();
+            // rel_path 非空时使用相对路径(保留目录层级)，否则回退到 basename(兼容单文件)
+            rel_path_ = rel_path.empty() ? fu.FileName() : rel_path;
+            url_ = config.GetDownLoadPrefix() + rel_path_;
             std::string log = "";
             log += "New storageinfo start\n";
             log += "Storage Information: \n";
@@ -129,6 +132,15 @@ namespace mystorage
                     info.fsize_ = root[i]["fsize_"].asInt64();
                     info.storage_path_ = root[i]["storage_path_"].asString();
                     info.url_ = root[i]["url_"].asString();
+                    // 旧 storage.data 可能没有 rel_path_ 字段，回退为 basename 保证旧数据可加载
+                    if(root[i].isMember("rel_path_"))
+                    {
+                        info.rel_path_ = root[i]["rel_path_"].asString();
+                    }
+                    else
+                    {
+                        info.rel_path_ = mystorage::FileUtil(info.storage_path_).FileName();
+                    }
                     Insert(info);
                 }
                 catch(const std::exception& err)
@@ -169,6 +181,7 @@ namespace mystorage
                 val["fsize_"] = (Json::Int64)info.fsize_;
                 val["storage_path_"] = info.storage_path_.c_str();
                 val["url_"] = info.url_.c_str();
+                val["rel_path_"] = info.rel_path_.c_str();
 
                 root.append(val);
             }

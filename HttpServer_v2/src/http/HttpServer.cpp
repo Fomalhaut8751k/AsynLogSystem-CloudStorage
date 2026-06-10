@@ -424,7 +424,7 @@ void HttpServer::onRequest(ConnectionContext* ctx, const HttpRequest& req, bool 
     bool close = (connection == "close") || (req.getVersion() == "HTTP/1.0" && connection != "Keep-Alive");
     HttpResponse response(close);
 
-    if(req.method() == HttpRequest::kGet && req.path() == "/download")
+    if(req.method() == HttpRequest::kGet && req.path().compare(0, 9, "/download") == 0)
     {
         std::string fileSizeHeader = req.getHeader("FileSize");
         if(fileSizeHeader.empty()) fileSizeHeader = req.getQueryParameters("filesize");
